@@ -217,14 +217,28 @@ int main() {
         {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
     }};
     auto addBlock = [&](float x, float y, float size, const std::array<float, 3> &color) {
+      // Eight corners and six faces: this is real cube geometry, not a screen tile.
       const uint32_t first = static_cast<uint32_t>(vertices.size());
-      vertices.insert(vertices.end(), {
-          {{x,        y,        0.0f}, {color[0], color[1], color[2]}},
-          {{x + size, y,        0.0f}, {color[0], color[1], color[2]}},
-          {{x + size, y + size, 0.0f}, {color[0], color[1], color[2]}},
-          {{x,        y + size, 0.0f}, {color[0], color[1], color[2]}}
+      const float z0 = -0.10f, z1 = z0 + size;
+      const std::array<Vertex, 8> cube{{
+          {{x,        y,        z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
+          {{x + size, y,        z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
+          {{x + size, y + size, z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
+          {{x,        y + size, z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
+          {{x,        y,        z1}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
+          {{x + size, y,        z1}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
+          {{x + size, y + size, z1}, {color[0], color[1], color[2]}},
+          {{x,        y + size, z1}, {color[0], color[1], color[2]}}
+      }};
+      vertices.insert(vertices.end(), cube.begin(), cube.end());
+      indices.insert(indices.end(), {
+          first, first+1, first+2, first+2, first+3, first,
+          first+4, first+6, first+5, first+6, first+4, first+7,
+          first, first+4, first+5, first+5, first+1, first,
+          first+1, first+5, first+6, first+6, first+2, first+1,
+          first+2, first+6, first+7, first+7, first+3, first+2,
+          first+3, first+7, first+4, first+4, first, first+3
       });
-      indices.insert(indices.end(), {first, first + 1, first + 2, first + 2, first + 3, first});
     };
     constexpr float block = 0.22f;
     for (int row = 0; row < 3; ++row)
@@ -259,10 +273,12 @@ int main() {
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
     auto updateCamera = [&] {
       const float c = std::cos(gYaw) * gZoom, sn = std::sin(gYaw) * gZoom;
+      // Isometric CAO projection with a user-controlled turn around the vertical axis.
       std::fill(std::begin(drawPush.mvp), std::end(drawPush.mvp), 0.0f);
-      drawPush.mvp[0] = c; drawPush.mvp[1] = sn;
-      drawPush.mvp[4] = -sn; drawPush.mvp[5] = c;
-      drawPush.mvp[10] = 1.0f; drawPush.mvp[15] = 1.0f;
+      drawPush.mvp[0] = 0.80f * c;  drawPush.mvp[1] = 0.38f * c;
+      drawPush.mvp[4] = -0.80f * sn; drawPush.mvp[5] = 0.38f * sn;
+      drawPush.mvp[8] = 0.65f; drawPush.mvp[9] = -0.40f;
+      drawPush.mvp[10] = 0.5f; drawPush.mvp[15] = 1.0f;
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents(); updateCamera(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
