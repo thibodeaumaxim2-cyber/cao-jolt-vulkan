@@ -472,7 +472,7 @@ int main() {
       if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
-      ImGui::TextDisabled("Quadruped design: hip 65 N m | knee 50 N m | ankle 25 N m");
+      ImGui::TextDisabled("Quadruped: hip 65 N m | linear knee 1,200 N, 0.44 m stroke | ankle 25 N m");
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
