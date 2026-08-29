@@ -14,8 +14,15 @@ class VulkanRenderer {
   void resize(VkExtent2D);
   void shutdown();
 
+  bool ready() const {
+    return device_ != VK_NULL_HANDLE && renderPass_ != VK_NULL_HANDLE;
+  }
+
  private:
   VkDevice device_ = VK_NULL_HANDLE;
+  VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+  VkRenderPass renderPass_ = VK_NULL_HANDLE;
+  VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout layout_ = VK_NULL_HANDLE;
   VkBuffer vertexBuffer_ = VK_NULL_HANDLE;
