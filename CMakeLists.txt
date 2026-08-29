@@ -45,6 +45,7 @@ target_include_directories(cao-imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_D
 if(DEFINED glfw_SOURCE_DIR)
   target_include_directories(cao-imgui PRIVATE ${glfw_SOURCE_DIR}/include)
 endif()
+target_compile_definitions(cao-imgui PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(cao-imgui PUBLIC Vulkan::Vulkan)
 
 find_package(nlohmann_json CONFIG QUIET)
