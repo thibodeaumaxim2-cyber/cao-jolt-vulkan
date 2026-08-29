@@ -1,6 +1,9 @@
 #define GLFW_INCLUDE_NONE
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
 #include "editor/JoltBridge.hpp"
 #include "editor/Scene.hpp"
 
@@ -18,21 +21,26 @@
 static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
 static bool gDragging = false, gPanning = false, gSimulationRunning = false;
 static int gTintMode = 0;
-static bool gBuildRequested = false, gDemoRequested = false;
+static bool gBuildRequested = false, gDemoRequested = false, gUiReady = false;
 static double gLastX = 0.0, gLastY = 0.0;
-static void cursor(GLFWwindow *, double x, double y) {
+static void cursor(GLFWwindow *window, double x, double y) {
+  if (gUiReady) ImGui_ImplGlfw_CursorPosCallback(window, x, y);
   if (gDragging) { gYaw += static_cast<float>(x - gLastX) * 0.008f; gPitch = std::clamp(gPitch + static_cast<float>(y - gLastY) * 0.006f, -1.25f, 0.15f); }
   if (gPanning) { gPanX += static_cast<float>(x - gLastX) * 0.002f; gPanY -= static_cast<float>(y - gLastY) * 0.002f; }
   gLastX = x; gLastY = y;
 }
-static void mouseButton(GLFWwindow *window, int button, int action, int) {
+static void mouseButton(GLFWwindow *window, int button, int action, int mods) {
+  if (gUiReady) ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
+  if (gUiReady && ImGui::GetIO().WantCaptureMouse) return;
   if (button == GLFW_MOUSE_BUTTON_LEFT)
     gDragging = action == GLFW_PRESS;
   if (button == GLFW_MOUSE_BUTTON_MIDDLE)
     gPanning = action == GLFW_PRESS;
   glfwGetCursorPos(window, &gLastX, &gLastY);
 }
-static void key(GLFWwindow *, int key, int, int action, int) {
+static void key(GLFWwindow *window, int key, int scancode, int action, int mods) {
+  if (gUiReady) ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
+  if (gUiReady && ImGui::GetIO().WantCaptureKeyboard) return;
   if (action != GLFW_PRESS) return;
   if (key == GLFW_KEY_R) {
     gYaw = 0.55f; gPitch = -0.55f; gZoom = 1.0f; gPanX = 0.0f; gPanY = 0.0f;
@@ -47,7 +55,9 @@ static void key(GLFWwindow *, int key, int, int action, int) {
   }
 }
 
-static void scroll(GLFWwindow *, double, double y) {
+static void scroll(GLFWwindow *window, double x, double y) {
+  if (gUiReady) ImGui_ImplGlfw_ScrollCallback(window, x, y);
+  if (gUiReady && ImGui::GetIO().WantCaptureMouse) return;
   gZoom = std::clamp(gZoom * (1.0f + static_cast<float>(y) * 0.10f), 0.35f, 2.5f);
 }
 
@@ -377,6 +387,39 @@ int main() {
     VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO}; fenceInfo.flags=VK_FENCE_CREATE_SIGNALED_BIT; VkFence fence;
     check(vkCreateFence(device,&fenceInfo,nullptr,&fence),"fence");
 
+    VkDescriptorPoolSize poolSizes[] = {
+      {VK_DESCRIPTOR_TYPE_SAMPLER, 1000}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+      {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+      {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
+    VkDescriptorPoolCreateInfo imguiPoolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    imguiPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    imguiPoolInfo.maxSets = 1000 * 11;
+    imguiPoolInfo.poolSizeCount = 11; imguiPoolInfo.pPoolSizes = poolSizes;
+    VkDescriptorPool imguiPool = VK_NULL_HANDLE;
+    check(vkCreateDescriptorPool(device, &imguiPoolInfo, nullptr, &imguiPool), "imgui descriptor pool");
+    IMGUI_CHECKVERSION(); ImGui::CreateContext(); ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForVulkan(window, false);
+    ImGui_ImplVulkan_InitInfo imguiInfo{};
+    imguiInfo.Instance=instance; imguiInfo.PhysicalDevice=gpu; imguiInfo.Device=device;
+    imguiInfo.QueueFamily=family; imguiInfo.Queue=queue; imguiInfo.DescriptorPool=imguiPool;
+    imguiInfo.MinImageCount=imageCount; imguiInfo.ImageCount=swapImageCount;
+    imguiInfo.MSAASamples=VK_SAMPLE_COUNT_1_BIT;
+    ImGui_ImplVulkan_Init(&imguiInfo, renderPass);
+    VkCommandBufferAllocateInfo fontAllocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    fontAllocate.commandPool=pool; fontAllocate.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; fontAllocate.commandBufferCount=1;
+    VkCommandBuffer fontCommand=VK_NULL_HANDLE; check(vkAllocateCommandBuffers(device,&fontAllocate,&fontCommand),"imgui font command");
+    VkCommandBufferBeginInfo fontBegin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; fontBegin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    check(vkBeginCommandBuffer(fontCommand,&fontBegin),"imgui font begin");
+    ImGui_ImplVulkan_CreateFontsTexture(fontCommand);
+    check(vkEndCommandBuffer(fontCommand),"imgui font end");
+    VkSubmitInfo fontSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; fontSubmit.commandBufferCount=1; fontSubmit.pCommandBuffers=&fontCommand;
+    check(vkQueueSubmit(queue,1,&fontSubmit,VK_NULL_HANDLE),"imgui font submit"); check(vkQueueWaitIdle(queue),"imgui font wait");
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+    gUiReady = true;
+
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
     Mat4 cameraMvp{};
     auto updateCamera = [&] {
@@ -391,6 +434,31 @@ int main() {
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
+      ImGui_ImplVulkan_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+      ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_Always);
+      ImGui::SetNextWindowBgAlpha(0.92f);
+      ImGui::Begin("CAO Toolbar", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+      if (ImGui::Button("Build pyramid")) gBuildRequested = true;
+      ImGui::SameLine();
+      if (ImGui::Button("Destroy pyramid")) gDemoRequested = true;
+      ImGui::SameLine();
+      if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
+      ImGui::Text("B build | D destroy | Space play/pause");
+      ImGui::End();
+      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 250.0f, 12), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(238, 0), ImGuiCond_Always);
+      ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoCollapse);
+      ImGui::Text("Objects: %d", static_cast<int>(scene.objects().size()));
+      ImGui::Separator();
+      for (const SceneObject &object : scene.objects())
+        ImGui::Text("%s  (%0.1f, %0.1f, %0.1f)", object.name.c_str(), object.transform.position.x, object.transform.position.y, object.transform.position.z);
+      ImGui::End();
+      ImGui::SetNextWindowPos(ImVec2(0, float(extent.height) - 42.0f), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(float(extent.width), 42), ImGuiCond_Always);
+      ImGui::Begin("Taskbar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+      ImGui::Text("CAO Jolt Vulkan    Orbit: left drag    Pan: middle drag    Zoom: wheel    %s", gSimulationRunning ? "SIMULATION RUNNING" : "BUILD MODE");
+      ImGui::End();
+      ImGui::Render();
       if (gBuildRequested) {
         scene.buildPyramid(3, false); physics.rebuild(scene); gSimulationRunning = false; gBuildRequested = false;
       }
@@ -424,6 +492,7 @@ int main() {
         vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush);
         vkCmdDrawIndexed(commands[image], draw.indexCount, 1, draw.firstIndex, 0, 0);
       }
+      ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commands[image]);
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
@@ -431,6 +500,7 @@ int main() {
       present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image; vkQueuePresentKHR(queue,&present);
     }
     vkDeviceWaitIdle(device);
+    gUiReady = false; ImGui_ImplVulkan_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext(); vkDestroyDescriptorPool(device,imguiPool,nullptr);
     vkDestroyFence(device,fence,nullptr); vkDestroySemaphore(device,finished,nullptr); vkDestroySemaphore(device,available,nullptr);
     vkDestroyCommandPool(device,pool,nullptr); vkDestroyBuffer(device,indexBuffer,nullptr); vkFreeMemory(device,indexMemory,nullptr); vkDestroyBuffer(device,vertexBuffer,nullptr); vkFreeMemory(device,vertexMemory,nullptr);
     vkDestroyPipeline(device,pipeline,nullptr); vkDestroyPipelineLayout(device,layout,nullptr); for(auto fb:framebuffers)vkDestroyFramebuffer(device,fb,nullptr); vkDestroyRenderPass(device,renderPass,nullptr); vkDestroyImageView(device,depthView,nullptr); vkDestroyImage(device,depthImage,nullptr); vkFreeMemory(device,depthMemory,nullptr); for(auto view:views)vkDestroyImageView(device,view,nullptr);
