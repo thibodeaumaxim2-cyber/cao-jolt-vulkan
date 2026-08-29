@@ -13,19 +13,27 @@
 #include <string>
 #include <vector>
 
-static float gYaw = 0.0f, gZoom = 1.0f;
-static bool gDragging = false;
+static float gYaw = 0.0f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
+static bool gDragging = false, gPanning = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *, double x, double y) {
   if (gDragging) gYaw += static_cast<float>(x - gLastX) * 0.008f;
+  if (gPanning) { gPanX += static_cast<float>(x - gLastX) * 0.002f; gPanY -= static_cast<float>(y - gLastY) * 0.002f; }
   gLastX = x; gLastY = y;
 }
 static void mouseButton(GLFWwindow *window, int button, int action, int) {
-  if (button == GLFW_MOUSE_BUTTON_LEFT) {
+  if (button == GLFW_MOUSE_BUTTON_LEFT)
     gDragging = action == GLFW_PRESS;
-    glfwGetCursorPos(window, &gLastX, &gLastY);
+  if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+    gPanning = action == GLFW_PRESS;
+  glfwGetCursorPos(window, &gLastX, &gLastY);
+}
+static void key(GLFWwindow *, int key, int, int action, int) {
+  if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+    gYaw = 0.0f; gZoom = 1.0f; gPanX = 0.0f; gPanY = 0.0f;
   }
 }
+
 static void scroll(GLFWwindow *, double, double y) {
   gZoom = std::clamp(gZoom * (1.0f + static_cast<float>(y) * 0.10f), 0.35f, 2.5f);
 }
@@ -93,6 +101,7 @@ int main() {
     glfwSetCursorPosCallback(window, cursor);
     glfwSetMouseButtonCallback(window, mouseButton);
     glfwSetScrollCallback(window, scroll);
+    glfwSetKeyCallback(window, key);
 
     uint32_t extensionCount = 0;
     const char **extensions = glfwGetRequiredInstanceExtensions(&extensionCount);
@@ -316,7 +325,7 @@ int main() {
       drawPush.mvp[0] = 0.80f * c;  drawPush.mvp[1] = 0.38f * c;
       drawPush.mvp[4] = -0.80f * sn; drawPush.mvp[5] = 0.38f * sn;
       drawPush.mvp[8] = 0.65f; drawPush.mvp[9] = -0.40f;
-      drawPush.mvp[10] = 0.5f; drawPush.mvp[15] = 1.0f;
+      drawPush.mvp[10] = 0.5f; drawPush.mvp[12] = gPanX; drawPush.mvp[13] = gPanY; drawPush.mvp[15] = 1.0f;
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents(); updateCamera(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
