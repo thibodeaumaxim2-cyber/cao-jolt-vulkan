@@ -469,8 +469,8 @@ int main() {
       ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_Always);
       ImGui::SetNextWindowBgAlpha(0.92f);
       ImGui::Begin("CAO Toolbar", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
-      if (ImGui::Button("Build")) gBuildRequested = true; ImGui::SameLine();
-      if (ImGui::Button("Destroy")) gDemoRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::TextDisabled("Quadruped design: hip 65 N m | knee 50 N m | ankle 25 N m");
       ImGui::End();
@@ -533,10 +533,10 @@ int main() {
         physics.rebuild(scene); gPhysicsRebuildRequested = false;
       }
       if (gBuildRequested) {
-        scene.buildPyramid(3, false); physics.rebuild(scene); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
+        scene.buildQuadruped(); physics.rebuild(scene); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
       }
       if (gDemoRequested) {
-        scene.buildPyramid(3, true); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
+        scene.buildQuadruped(); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
       }
       if (gSimulationRunning) physics.step(scene, 1.0f / 60.0f);
       updateCamera();
