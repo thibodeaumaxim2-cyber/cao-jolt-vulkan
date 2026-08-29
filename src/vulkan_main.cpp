@@ -311,6 +311,30 @@ int main() {
           first+3, first+7, first+4, first+4, first, first+3
       });
     };
+    auto addGridStrip = [&](float x0, float z0, float x1, float z1,
+                            float width, const std::array<float, 3> &color) {
+      const uint32_t first = static_cast<uint32_t>(vertices.size());
+      const float y = -0.635f;
+      const float dx = x1 - x0, dz = z1 - z0;
+      const float length = std::sqrt(dx * dx + dz * dz);
+      const float ox = -dz / length * width, oz = dx / length * width;
+      vertices.insert(vertices.end(), {
+          {{x0 + ox, y, z0 + oz}, {color[0], color[1], color[2]}},
+          {{x1 + ox, y, z1 + oz}, {color[0], color[1], color[2]}},
+          {{x1 - ox, y, z1 - oz}, {color[0], color[1], color[2]}},
+          {{x0 - ox, y, z0 - oz}, {color[0], color[1], color[2]}}
+      });
+      indices.insert(indices.end(), {first, first + 1, first + 2, first + 2, first + 3, first});
+    };
+    constexpr float gridExtent = 1.5f, gridStep = 0.15f;
+    const std::array<float, 3> gridColor{{0.12f, 0.24f, 0.31f}};
+    for (int i = -10; i <= 10; ++i) {
+      const float offset = static_cast<float>(i) * gridStep;
+      addGridStrip(-gridExtent, offset, gridExtent, offset, 0.006f, gridColor);
+      addGridStrip(offset, -gridExtent, offset, gridExtent, 0.006f, gridColor);
+    }
+    addGridStrip(-gridExtent, 0.0f, gridExtent, 0.0f, 0.015f, {{0.92f, 0.18f, 0.18f}});
+    addGridStrip(0.0f, -gridExtent, 0.0f, gridExtent, 0.015f, {{0.18f, 0.76f, 0.32f}});
     constexpr float block = 0.22f;
     for (int row = 0; row < 3; ++row)
       for (int col = 0; col < 3; ++col)
