@@ -540,7 +540,7 @@ int main() {
       if (gSimulationRunning) physics.step(scene, 1.0f / 60.0f);
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
-      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | B: build | D: falling demo | Space: play/pause").c_str());
+      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
       check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
       if (acquire==VK_ERROR_OUT_OF_DATE_KHR) continue; check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
