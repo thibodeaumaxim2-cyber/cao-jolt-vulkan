@@ -93,8 +93,19 @@ void JoltBridge::rebuild(Scene &scene) {
                    object.transform.position.z),
         JPH::Quat::sIdentity(), motion,
         object.dynamic ? CaoObjectLayers::Dynamic : CaoObjectLayers::Static);
-    settings.mFriction = 0.30f;
-    settings.mRestitution = 0.68f;
+    settings.mFriction = 0.72f;
+    settings.mRestitution = 0.04f;
+    // SI mass model for the 20 kg quadruped: 12 kg torso, 1.2 kg thighs,
+    // 0.8 kg shins and 0.25 kg feet. Jolt calculates matching inertia.
+    float massKg = 1.0f;
+    if (object.name == "Torso") massKg = 12.0f;
+    else if (object.name.find("Hip") != std::string::npos) massKg = 1.20f;
+    else if (object.name.find("Shin") != std::string::npos) massKg = 0.80f;
+    else if (object.name.find("Foot") != std::string::npos) massKg = 0.25f;
+    if (object.dynamic) {
+      settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+      settings.mMassPropertiesOverride.mMass = massKg;
+    }
     const JPH::BodyID body = bodies.CreateAndAddBody(
         settings, object.dynamic ? JPH::EActivation::Activate
                                  : JPH::EActivation::DontActivate);
@@ -137,9 +148,9 @@ void JoltBridge::rebuild(Scene &scene) {
       const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
-      addHinge("Torso", prefix + " Hip", x, 2.22f, z, -0.85f, 0.85f, 0.18f * end, 55.0f);
-      addHinge(prefix + " Hip", prefix + " Shin", x, 1.60f, z, -1.45f, 0.15f, -0.70f, 42.0f);
-      addHinge(prefix + " Shin", prefix + " Foot", x, 0.65f, z, -0.55f, 0.55f, 0.05f, 20.0f);
+      addHinge("Torso", prefix + " Hip", x, 2.22f, z, -0.85f, 0.85f, 0.18f * end, 65.0f);
+      addHinge(prefix + " Hip", prefix + " Shin", x, 1.60f, z, -1.45f, 0.15f, -0.70f, 50.0f);
+      addHinge(prefix + " Shin", prefix + " Foot", x, 0.65f, z, -0.55f, 0.55f, 0.05f, 25.0f);
     }
   }
 }
