@@ -62,7 +62,8 @@ void JoltBridge::rebuild(Scene &scene) {
     bodies.DestroyBody(impl_->ground);
   }
 
-  const JPH::BoxShapeSettings groundShape(JPH::Vec3(50.0f, 0.25f, 50.0f));
+  JPH::BoxShapeSettings groundShape(JPH::Vec3(50.0f, 0.25f, 50.0f));
+  groundShape.SetEmbedded();
   JPH::BodyCreationSettings groundSettings(
       &groundShape, JPH::RVec3(0.0, -0.25, 0.0), JPH::Quat::sIdentity(),
       JPH::EMotionType::Static, CaoObjectLayers::Static);
@@ -73,7 +74,9 @@ void JoltBridge::rebuild(Scene &scene) {
         std::max(0.05f, object.transform.scale.x * 0.5f),
         std::max(0.05f, object.transform.scale.y * 0.5f),
         std::max(0.05f, object.transform.scale.z * 0.5f));
-    const JPH::BoxShapeSettings shape(halfExtent);
+    JPH::BoxShapeSettings shape(halfExtent);
+    // ShapeSettings inherits RefTarget; stack instances must not self-delete.
+    shape.SetEmbedded();
     const JPH::EMotionType motion =
         object.dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static;
     const JPH::BodyCreationSettings settings(
