@@ -137,3 +137,5 @@ add_custom_target(cao-shaders ALL
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.vert -o ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.frag -o ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
   DEPENDS assets/shaders/cad.vert assets/shaders/cad.frag)
+
+add_dependencies(cao-jolt cao-shaders)
