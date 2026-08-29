@@ -93,6 +93,23 @@ void JoltBridge::rebuild(Scene &scene) {
   }
 }
 
+
+void JoltBridge::demolish(const Scene &scene) {
+  if (!impl_->ready) return;
+  auto &bodies = impl_->physics->GetBodyInterface();
+  for (const SceneObject &object : scene.objects()) {
+    if (!object.dynamic) continue;
+    const auto it = impl_->bodies.find(object.id);
+    if (it == impl_->bodies.end()) continue;
+    const float side = (object.id % 2u == 0u) ? 1.0f : -1.0f;
+    const float forward = ((object.id / 2u) % 2u == 0u) ? 1.0f : -1.0f;
+    const float height = std::max(0.0f, object.transform.position.y);
+    bodies.AddImpulse(it->second,
+        JPH::Vec3(side * (3.5f + height), 2.0f + height * 1.8f,
+                  forward * (2.5f + height)));
+  }
+}
+
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->physics->Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
