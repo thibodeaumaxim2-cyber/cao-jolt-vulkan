@@ -13,11 +13,11 @@
 #include <string>
 #include <vector>
 
-static float gYaw = 0.0f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
+static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
 static bool gDragging = false, gPanning = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *, double x, double y) {
-  if (gDragging) gYaw += static_cast<float>(x - gLastX) * 0.008f;
+  if (gDragging) { gYaw += static_cast<float>(x - gLastX) * 0.008f; gPitch = std::clamp(gPitch + static_cast<float>(y - gLastY) * 0.006f, -1.25f, 0.15f); }
   if (gPanning) { gPanX += static_cast<float>(x - gLastX) * 0.002f; gPanY -= static_cast<float>(y - gLastY) * 0.002f; }
   gLastX = x; gLastY = y;
 }
@@ -30,7 +30,7 @@ static void mouseButton(GLFWwindow *window, int button, int action, int) {
 }
 static void key(GLFWwindow *, int key, int, int action, int) {
   if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-    gYaw = 0.0f; gZoom = 1.0f; gPanX = 0.0f; gPanY = 0.0f;
+    gYaw = 0.55f; gPitch = -0.55f; gZoom = 1.0f; gPanX = 0.0f; gPanY = 0.0f;
   }
 }
 
@@ -45,6 +45,21 @@ static void check(VkResult result, const char *what) {
 
 struct Vertex { float position[3]; float color[3]; };
 struct Push { float mvp[16]; float tint[4]; };
+struct Mat4 { float v[16]{}; };
+static Mat4 identity() { Mat4 m{}; m.v[0]=m.v[5]=m.v[10]=m.v[15]=1.0f; return m; }
+static Mat4 multiply(const Mat4 &a, const Mat4 &b) {
+  Mat4 r{};
+  for (int c=0;c<4;++c) for (int row=0;row<4;++row) for (int k=0;k<4;++k)
+    r.v[c*4+row] += a.v[k*4+row] * b.v[c*4+k];
+  return r;
+}
+static Mat4 translate(float x,float y,float z) { Mat4 m=identity(); m.v[12]=x; m.v[13]=y; m.v[14]=z; return m; }
+static Mat4 rotateX(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[5]=c;m.v[6]=sn;m.v[9]=-sn;m.v[10]=c;return m; }
+static Mat4 rotateY(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[0]=c;m.v[2]=-sn;m.v[8]=sn;m.v[10]=c;return m; }
+static Mat4 scale(float s) { Mat4 m=identity();m.v[0]=m.v[5]=m.v[10]=s;return m; }
+static Mat4 perspective(float fovy,float aspect,float nearPlane,float farPlane) {
+  Mat4 m{}; float f=1.0f/std::tan(fovy*0.5f); m.v[0]=f/aspect;m.v[5]=f;m.v[10]=farPlane/(nearPlane-farPlane);m.v[11]=-1.0f;m.v[14]=(farPlane*nearPlane)/(nearPlane-farPlane);return m;
+}
 
 static uint32_t memoryType(VkPhysicalDevice gpu, uint32_t bits,
                            VkMemoryPropertyFlags properties) {
@@ -319,13 +334,11 @@ int main() {
 
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
     auto updateCamera = [&] {
-      const float c = std::cos(gYaw) * gZoom, sn = std::sin(gYaw) * gZoom;
-      // Isometric CAO projection with a user-controlled turn around the vertical axis.
-      std::fill(std::begin(drawPush.mvp), std::end(drawPush.mvp), 0.0f);
-      drawPush.mvp[0] = 0.80f * c;  drawPush.mvp[1] = 0.38f * c;
-      drawPush.mvp[4] = -0.80f * sn; drawPush.mvp[5] = 0.38f * sn;
-      drawPush.mvp[8] = 0.65f; drawPush.mvp[9] = -0.40f;
-      drawPush.mvp[10] = 0.5f; drawPush.mvp[12] = gPanX; drawPush.mvp[13] = gPanY; drawPush.mvp[15] = 1.0f;
+      const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+      const Mat4 model = multiply(translate(gPanX, gPanY - 0.03f, -2.35f),
+                         multiply(rotateX(gPitch), multiply(rotateY(gYaw), scale(gZoom))));
+      const Mat4 mvp = multiply(perspective(1.05f, aspect, 0.05f, 50.0f), model);
+      std::memcpy(drawPush.mvp, mvp.v, sizeof(drawPush.mvp));
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents(); updateCamera(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
