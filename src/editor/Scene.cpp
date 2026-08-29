@@ -8,7 +8,7 @@ void Scene::buildPyramid(int levels,bool dynamic){clear();levels=std::clamp(leve
 
 void Scene::buildQuadruped(){
   clear(); quadruped_=true;
-  auto part=[&](const char*name,const Vec3&p,const Vec3&s){Transform t;t.position=p;t.scale=s;auto&o=add(Primitive::Box,t);o.name=name;o.dynamic=true;};
+  auto part=[&](const std::string &name,const Vec3&p,const Vec3&s){Transform t;t.position=p;t.scale=s;auto&o=add(Primitive::Box,t);o.name=name;o.dynamic=true;};
   part("Torso", {0,2.45f,0}, {1.55f,0.48f,0.72f});
   for(int side : {-1,1}) for(int end : {-1,1}){
     const char *front=end<0?"Front":"Rear"; const char *lr=side<0?"Left":"Right";
