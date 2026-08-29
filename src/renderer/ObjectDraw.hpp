@@ -4,7 +4,7 @@
 #include <cstdint>
 
 struct ObjectDrawData {
-  Mat4 model = Mat4::identity();
+  Mat4 model = identity4();
   float tint[4] = {1.0f, 1.0f, 1.0f, 1.0f};
   uint32_t firstIndex = 0;
   uint32_t indexCount = 0;
