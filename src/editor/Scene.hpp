@@ -14,8 +14,10 @@ class Scene {
   void erase(uint32_t id);
   SceneObject* find(uint32_t id);
   void buildPyramid(int levels,bool dynamic=true);
+  void buildQuadruped();
+  bool isQuadruped() const{return quadruped_;}
   void clear();
   const std::vector<SceneObject>& objects()const{return objects_;}
   std::vector<SceneObject>& objects(){return objects_;}
- private: uint32_t nextId_=1; std::vector<SceneObject> objects_;
+ private: uint32_t nextId_=1; bool quadruped_=false; std::vector<SceneObject> objects_;
 };
