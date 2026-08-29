@@ -42,7 +42,10 @@ add_library(cao-imgui STATIC
   ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
   ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
 target_include_directories(cao-imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(cao-imgui PUBLIC Vulkan::Vulkan ${CAO_GLFW_TARGET})
+if(DEFINED glfw_SOURCE_DIR)
+  target_include_directories(cao-imgui PRIVATE ${glfw_SOURCE_DIR}/include)
+endif()
+target_link_libraries(cao-imgui PUBLIC Vulkan::Vulkan)
 
 find_package(nlohmann_json CONFIG QUIET)
 if(NOT nlohmann_json_FOUND AND CAO_FETCH_DEPENDENCIES)
