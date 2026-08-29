@@ -24,6 +24,7 @@ static int gTintMode = 0;
 static bool gBuildRequested = false, gDemoRequested = false, gUiReady = false;
 static int gCreatePrimitive = -1;
 static uint32_t gSelectedId = 1;
+static int gRobotScript = 0;
 static bool gDeleteRequested = false, gPhysicsRebuildRequested = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *window, double x, double y) {
@@ -473,6 +474,9 @@ int main() {
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::TextDisabled("Quadruped: hip 65 N m | linear knee 1,200 N, 0.44 m stroke | ankle 25 N m");
+      const char *robotScripts[] = {"Stand", "Walk", "Trot", "Jump"};
+      if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts)))
+        physics.setRobotScript(gRobotScript);
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
