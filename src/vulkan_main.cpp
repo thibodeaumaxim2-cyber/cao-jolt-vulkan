@@ -65,7 +65,7 @@ static Mat4 rotateX(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::s
 static Mat4 rotateY(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[0]=c;m.v[2]=-sn;m.v[8]=sn;m.v[10]=c;return m; }
 static Mat4 scale(float s) { Mat4 m=identity();m.v[0]=m.v[5]=m.v[10]=s;return m; }
 static Mat4 perspective(float fovy,float aspect,float nearPlane,float farPlane) {
-  Mat4 m{}; float f=1.0f/std::tan(fovy*0.5f); m.v[0]=f/aspect;m.v[5]=f;m.v[10]=farPlane/(nearPlane-farPlane);m.v[11]=-1.0f;m.v[14]=(farPlane*nearPlane)/(nearPlane-farPlane);return m;
+  Mat4 m{}; float f=1.0f/std::tan(fovy*0.5f); m.v[0]=f/aspect;m.v[5]=-f;m.v[10]=farPlane/(nearPlane-farPlane);m.v[11]=-1.0f;m.v[14]=(farPlane*nearPlane)/(nearPlane-farPlane);return m;
 }
 
 static uint32_t memoryType(VkPhysicalDevice gpu, uint32_t bits,
