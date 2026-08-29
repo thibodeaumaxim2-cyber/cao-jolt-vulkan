@@ -3,13 +3,16 @@
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/RegisterTypes.h>
-#include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
+#include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/RegisterTypes.h>
 
 #include <algorithm>
 #include <thread>
+#include <unordered_map>
 
 struct JoltBridge::Impl {
   bool ready = false;
@@ -19,6 +22,8 @@ struct JoltBridge::Impl {
   JPH::PhysicsSystem physics;
   std::unique_ptr<JPH::TempAllocatorImpl> allocator;
   std::unique_ptr<JPH::JobSystemThreadPool> jobs;
+  std::unordered_map<uint32_t, JPH::BodyID> bodies;
+  JPH::BodyID ground;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -41,17 +46,80 @@ void JoltBridge::initialize() {
   impl_->ready = true;
 }
 
-void JoltBridge::rebuild(Scene&) {
-  // Dynamic and static body creation is the next bridge step.
+void JoltBridge::rebuild(Scene &scene) {
+  if (!impl_->ready) return;
+
+  auto &bodies = impl_->physics.GetBodyInterface();
+  for (const auto &[id, body] : impl_->bodies) {
+    bodies.RemoveBody(body);
+    bodies.DestroyBody(body);
+  }
+  impl_->bodies.clear();
+
+  if (!impl_->ground.IsInvalid()) {
+    bodies.RemoveBody(impl_->ground);
+    bodies.DestroyBody(impl_->ground);
+  }
+
+  const JPH::BoxShapeSettings groundShape(JPH::Vec3(50.0f, 0.25f, 50.0f));
+  JPH::BodyCreationSettings groundSettings(
+      &groundShape, JPH::RVec3(0.0, -0.25, 0.0), JPH::Quat::sIdentity(),
+      JPH::EMotionType::Static, CaoObjectLayers::Static);
+  impl_->ground = bodies.CreateAndAddBody(groundSettings, JPH::EActivation::DontActivate);
+
+  for (SceneObject &object : scene.objects()) {
+    const JPH::Vec3 halfExtent(
+        std::max(0.05f, object.transform.scale.x * 0.5f),
+        std::max(0.05f, object.transform.scale.y * 0.5f),
+        std::max(0.05f, object.transform.scale.z * 0.5f));
+    const JPH::BoxShapeSettings shape(halfExtent);
+    const JPH::EMotionType motion =
+        object.dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static;
+    const JPH::BodyCreationSettings settings(
+        &shape,
+        JPH::RVec3(object.transform.position.x, object.transform.position.y,
+                   object.transform.position.z),
+        JPH::Quat::sIdentity(), motion,
+        object.dynamic ? CaoObjectLayers::Dynamic : CaoObjectLayers::Static);
+    const JPH::BodyID body = bodies.CreateAndAddBody(
+        settings, object.dynamic ? JPH::EActivation::Activate
+                                 : JPH::EActivation::DontActivate);
+    impl_->bodies.emplace(object.id, body);
+    object.joltBody = body.GetIndexAndSequenceNumber();
+  }
 }
 
-void JoltBridge::step(Scene&, float seconds) {
+void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->physics.Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
+
+  const auto &lockInterface = impl_->physics.GetBodyLockInterface();
+  for (SceneObject &object : scene.objects()) {
+    const auto it = impl_->bodies.find(object.id);
+    if (it == impl_->bodies.end()) continue;
+    JPH::BodyLockRead lock(lockInterface, it->second);
+    if (!lock.Succeeded()) continue;
+    const JPH::RVec3 position = lock.GetBody().GetPosition();
+    object.transform.position = {
+        static_cast<float>(position.GetX()),
+        static_cast<float>(position.GetY()),
+        static_cast<float>(position.GetZ())};
+  }
 }
 
 void JoltBridge::shutdown() {
   if (!impl_ || !impl_->ready) return;
+  auto &bodies = impl_->physics.GetBodyInterface();
+  for (const auto &[id, body] : impl_->bodies) {
+    bodies.RemoveBody(body);
+    bodies.DestroyBody(body);
+  }
+  impl_->bodies.clear();
+  if (!impl_->ground.IsInvalid()) {
+    bodies.RemoveBody(impl_->ground);
+    bodies.DestroyBody(impl_->ground);
+    impl_->ground = JPH::BodyID();
+  }
   impl_->jobs.reset();
   impl_->allocator.reset();
   JPH::UnregisterTypes();
