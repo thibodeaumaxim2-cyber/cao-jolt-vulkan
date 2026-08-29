@@ -395,7 +395,7 @@ int main() {
         scene.buildPyramid(3, false); physics.rebuild(scene); gSimulationRunning = false; gBuildRequested = false;
       }
       if (gDemoRequested) {
-        scene.buildPyramid(3, true); physics.rebuild(scene); gSimulationRunning = true; gDemoRequested = false;
+        scene.buildPyramid(3, true); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
       }
       if (gSimulationRunning) physics.step(scene, 1.0f / 60.0f);
       updateCamera();
