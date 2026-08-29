@@ -22,6 +22,9 @@ static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 
 static bool gDragging = false, gPanning = false, gSimulationRunning = false;
 static int gTintMode = 0;
 static bool gBuildRequested = false, gDemoRequested = false, gUiReady = false;
+static int gCreatePrimitive = -1;
+static uint32_t gSelectedId = 1;
+static bool gDeleteRequested = false, gPhysicsRebuildRequested = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *window, double x, double y) {
   if (gUiReady) ImGui_ImplGlfw_CursorPosCallback(window, x, y);
@@ -365,17 +368,25 @@ int main() {
       const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
       addBlock(layerColors[layer], object.id);
     }
-    auto buffer = [&](VkDeviceSize size, VkBufferUsageFlags usage, const void *source, VkBuffer &outBuffer, VkDeviceMemory &outMemory) {
-      VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; info.size=size; info.usage=usage; info.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    auto buffer = [&](VkDeviceSize capacity, VkBufferUsageFlags usage, const void *source, VkDeviceSize sourceSize, VkBuffer &outBuffer, VkDeviceMemory &outMemory) {
+      VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; info.size=capacity; info.usage=usage; info.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
       check(vkCreateBuffer(device,&info,nullptr,&outBuffer),"buffer"); VkMemoryRequirements requirements{}; vkGetBufferMemoryRequirements(device,outBuffer,&requirements);
       VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; allocation.allocationSize=requirements.size;
       allocation.memoryTypeIndex=memoryType(gpu,requirements.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
       check(vkAllocateMemory(device,&allocation,nullptr,&outMemory),"buffer memory"); check(vkBindBufferMemory(device,outBuffer,outMemory,0),"bind buffer");
-      void *mapped=nullptr; check(vkMapMemory(device,outMemory,0,size,0,&mapped),"map buffer"); std::memcpy(mapped,source,size); vkUnmapMemory(device,outMemory);
+      void *mapped=nullptr; check(vkMapMemory(device,outMemory,0,sourceSize,0,&mapped),"map buffer"); std::memcpy(mapped,source,sourceSize); vkUnmapMemory(device,outMemory);
     };
+    constexpr size_t maxSceneObjects = 128;
+    const VkDeviceSize vertexCapacity = (vertices.size() + maxSceneObjects * 8u) * sizeof(Vertex);
+    const VkDeviceSize indexCapacity = (indices.size() + maxSceneObjects * 36u) * sizeof(uint32_t);
     VkBuffer vertexBuffer=VK_NULL_HANDLE,indexBuffer=VK_NULL_HANDLE; VkDeviceMemory vertexMemory=VK_NULL_HANDLE,indexMemory=VK_NULL_HANDLE;
-    buffer(vertices.size() * sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices.data(),vertexBuffer,vertexMemory);
-    buffer(indices.size() * sizeof(uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,indices.data(),indexBuffer,indexMemory);
+    buffer(vertexCapacity,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices.data(),vertices.size()*sizeof(Vertex),vertexBuffer,vertexMemory);
+    buffer(indexCapacity,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,indices.data(),indices.size()*sizeof(uint32_t),indexBuffer,indexMemory);
+    auto uploadSceneGeometry = [&] {
+      void *mapped=nullptr;
+      check(vkMapMemory(device,vertexMemory,0,vertices.size()*sizeof(Vertex),0,&mapped),"map vertices"); std::memcpy(mapped,vertices.data(),vertices.size()*sizeof(Vertex)); vkUnmapMemory(device,vertexMemory);
+      check(vkMapMemory(device,indexMemory,0,indices.size()*sizeof(uint32_t),0,&mapped),"map indices"); std::memcpy(mapped,indices.data(),indices.size()*sizeof(uint32_t)); vkUnmapMemory(device,indexMemory);
+    };
 
     VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO}; poolInfo.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; poolInfo.queueFamilyIndex=family;
     VkCommandPool pool=VK_NULL_HANDLE; check(vkCreateCommandPool(device,&poolInfo,nullptr,&pool),"command pool");
@@ -426,32 +437,101 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
       ImGui_ImplVulkan_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-      ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_Always);
+      if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+          if (ImGui::MenuItem("New scene")) gBuildRequested = true;
+          if (ImGui::MenuItem("Exit")) glfwSetWindowShouldClose(window, GLFW_TRUE);
+          ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Create")) {
+          if (ImGui::MenuItem("Box")) gCreatePrimitive = static_cast<int>(Primitive::Box);
+          if (ImGui::MenuItem("Cylinder")) gCreatePrimitive = static_cast<int>(Primitive::Cylinder);
+          if (ImGui::MenuItem("Sphere")) gCreatePrimitive = static_cast<int>(Primitive::Sphere);
+          if (ImGui::MenuItem("Beam")) gCreatePrimitive = static_cast<int>(Primitive::Beam);
+          ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Simulation")) {
+          if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
+          if (ImGui::MenuItem("Build pyramid", "B")) gBuildRequested = true;
+          if (ImGui::MenuItem("Destroy pyramid", "D")) gDemoRequested = true;
+          ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("View")) {
+          if (ImGui::MenuItem("Isometric")) { gYaw=0.55f; gPitch=-0.55f; gZoom=1.0f; gPanX=gPanY=0.0f; }
+          if (ImGui::MenuItem("Top")) { gYaw=0.0f; gPitch=-1.25f; gZoom=0.85f; gPanX=gPanY=0.0f; }
+          if (ImGui::MenuItem("Front")) { gYaw=0.0f; gPitch=0.0f; gZoom=0.9f; gPanX=gPanY=0.0f; }
+          if (ImGui::MenuItem("Right")) { gYaw=1.57f; gPitch=0.0f; gZoom=0.9f; gPanX=gPanY=0.0f; }
+          ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+      }
+      ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_Always);
       ImGui::SetNextWindowBgAlpha(0.92f);
       ImGui::Begin("CAO Toolbar", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
-      if (ImGui::Button("Build pyramid")) gBuildRequested = true;
-      ImGui::SameLine();
-      if (ImGui::Button("Destroy pyramid")) gDemoRequested = true;
-      ImGui::SameLine();
+      if (ImGui::Button("Build")) gBuildRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Destroy")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
-      ImGui::Text("B build | D destroy | Space play/pause");
       ImGui::End();
-      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 250.0f, 12), ImGuiCond_Always);
-      ImGui::SetNextWindowSize(ImVec2(238, 0), ImGuiCond_Always);
-      ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoCollapse);
-      ImGui::Text("Objects: %d", static_cast<int>(scene.objects().size()));
-      ImGui::Separator();
-      for (const SceneObject &object : scene.objects())
-        ImGui::Text("%s  (%0.1f, %0.1f, %0.1f)", object.name.c_str(), object.transform.position.x, object.transform.position.y, object.transform.position.z);
+
+      ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(235, 340), ImGuiCond_Always);
+      ImGui::Begin("Object tree", nullptr, ImGuiWindowFlags_NoCollapse);
+      for (const SceneObject &object : scene.objects()) {
+        const bool selected = object.id == gSelectedId;
+        if (ImGui::Selectable(object.name.c_str(), selected)) gSelectedId = object.id;
+      }
       ImGui::End();
+
+      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 270.0f, 34), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(258, 0), ImGuiCond_Always);
+      ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse);
+      SceneObject *selected = scene.find(gSelectedId);
+      if (!selected) {
+        ImGui::TextDisabled("Select an object in the tree.");
+      } else {
+        ImGui::Text("%s #%u", selected->name.c_str(), selected->id);
+        ImGui::Separator();
+        float position[3]{selected->transform.position.x, selected->transform.position.y, selected->transform.position.z};
+        float rotation[3]{selected->transform.rotation.x, selected->transform.rotation.y, selected->transform.rotation.z};
+        float objectScale[3]{selected->transform.scale.x, selected->transform.scale.y, selected->transform.scale.z};
+        bool changed = ImGui::DragFloat3("Position", position, 0.05f);
+        changed |= ImGui::DragFloat3("Rotation", rotation, 1.0f);
+        changed |= ImGui::DragFloat3("Scale", objectScale, 0.05f, 0.10f, 10.0f);
+        changed |= ImGui::Checkbox("Dynamic body", &selected->dynamic);
+        if (changed) {
+          selected->transform.position={position[0],position[1],position[2]};
+          selected->transform.rotation={rotation[0],rotation[1],rotation[2]};
+          selected->transform.scale={objectScale[0],objectScale[1],objectScale[2]};
+          gPhysicsRebuildRequested = true;
+        }
+        ImGui::Separator();
+        if (ImGui::Button("Delete selected")) gDeleteRequested = true;
+      }
+      ImGui::End();
+
       ImGui::SetNextWindowPos(ImVec2(0, float(extent.height) - 42.0f), ImGuiCond_Always);
       ImGui::SetNextWindowSize(ImVec2(float(extent.width), 42), ImGuiCond_Always);
       ImGui::Begin("Taskbar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-      ImGui::Text("CAO Jolt Vulkan    Orbit: left drag    Pan: middle drag    Zoom: wheel    %s", gSimulationRunning ? "SIMULATION RUNNING" : "BUILD MODE");
+      ImGui::Text("CAO Jolt Vulkan  |  %d objects  |  Orbit: left drag  Pan: middle drag  Zoom: wheel  |  %s",
+                  static_cast<int>(scene.objects().size()), gSimulationRunning ? "SIMULATION RUNNING" : "BUILD MODE");
       ImGui::End();
       ImGui::Render();
+      if (gCreatePrimitive >= 0) {
+        Transform transform; transform.position={0.0f, 2.0f, 0.0f};
+        SceneObject &object = scene.add(static_cast<Primitive>(gCreatePrimitive), transform);
+        gSelectedId = object.id;
+        addBlock({{0.80f, 0.42f, 0.95f}}, object.id);
+        uploadSceneGeometry(); physics.rebuild(scene); gCreatePrimitive = -1;
+      }
+      if (gDeleteRequested) {
+        scene.erase(gSelectedId); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+        physics.rebuild(scene); gDeleteRequested = false;
+      }
+      if (gPhysicsRebuildRequested) {
+        physics.rebuild(scene); gPhysicsRebuildRequested = false;
+      }
       if (gBuildRequested) {
-        scene.buildPyramid(3, false); physics.rebuild(scene); gSimulationRunning = false; gBuildRequested = false;
+        scene.buildPyramid(3, false); physics.rebuild(scene); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
       }
       if (gDemoRequested) {
         scene.buildPyramid(3, true); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
