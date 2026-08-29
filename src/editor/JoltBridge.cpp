@@ -67,6 +67,8 @@ void JoltBridge::rebuild(Scene &scene) {
   JPH::BodyCreationSettings groundSettings(
       &groundShape, JPH::RVec3(0.0, -0.25, 0.0), JPH::Quat::sIdentity(),
       JPH::EMotionType::Static, CaoObjectLayers::Static);
+  groundSettings.mFriction = 0.38f;
+  groundSettings.mRestitution = 0.62f;
   impl_->ground = bodies.CreateAndAddBody(groundSettings, JPH::EActivation::DontActivate);
 
   for (SceneObject &object : scene.objects()) {
@@ -85,6 +87,8 @@ void JoltBridge::rebuild(Scene &scene) {
                    object.transform.position.z),
         JPH::Quat::sIdentity(), motion,
         object.dynamic ? CaoObjectLayers::Dynamic : CaoObjectLayers::Static);
+    settings.mFriction = 0.30f;
+    settings.mRestitution = 0.68f;
     const JPH::BodyID body = bodies.CreateAndAddBody(
         settings, object.dynamic ? JPH::EActivation::Activate
                                  : JPH::EActivation::DontActivate);
