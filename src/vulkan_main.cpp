@@ -189,8 +189,30 @@ int main() {
     VkPipeline pipeline=VK_NULL_HANDLE; check(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pipelineInfo,nullptr,&pipeline),"graphics pipeline");
     vkDestroyShaderModule(device, fragmentShader, nullptr); vkDestroyShaderModule(device, vertexShader, nullptr);
 
-    const std::array<Vertex,3> vertices{{{{0.0f,-0.7f,0},{0.1f,0.8f,1}},{{0.7f,0.7f,0},{0.2f,1,0.5f}},{{-0.7f,0.7f,0},{0.8f,0.3f,1}}}};
-    const std::array<uint32_t,3> indices{{0,1,2}};
+    // First native CAO scene: a 3-2-1 cube pyramid centred in the work area.
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    const std::array<std::array<float, 3>, 3> layerColors{{
+        {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
+    }};
+    auto addBlock = [&](float x, float y, float size, const std::array<float, 3> &color) {
+      const uint32_t first = static_cast<uint32_t>(vertices.size());
+      vertices.insert(vertices.end(), {
+          {{x,        y,        0.0f}, {color[0], color[1], color[2]}},
+          {{x + size, y,        0.0f}, {color[0], color[1], color[2]}},
+          {{x + size, y + size, 0.0f}, {color[0], color[1], color[2]}},
+          {{x,        y + size, 0.0f}, {color[0], color[1], color[2]}}
+      });
+      indices.insert(indices.end(), {first, first + 1, first + 2, first + 2, first + 3, first});
+    };
+    constexpr float block = 0.22f;
+    for (int row = 0; row < 3; ++row)
+      for (int col = 0; col < 3; ++col)
+        addBlock(-0.33f + col * block, -0.62f + row * block, block * 0.92f, layerColors[0]);
+    for (int row = 0; row < 2; ++row)
+      for (int col = 0; col < 2; ++col)
+        addBlock(-0.22f + col * block, 0.04f + row * block, block * 0.92f, layerColors[1]);
+    addBlock(-0.11f, 0.48f, block * 0.92f, layerColors[2]);
     auto buffer = [&](VkDeviceSize size, VkBufferUsageFlags usage, const void *source, VkBuffer &outBuffer, VkDeviceMemory &outMemory) {
       VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; info.size=size; info.usage=usage; info.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
       check(vkCreateBuffer(device,&info,nullptr,&outBuffer),"buffer"); VkMemoryRequirements requirements{}; vkGetBufferMemoryRequirements(device,outBuffer,&requirements);
@@ -200,8 +222,8 @@ int main() {
       void *mapped=nullptr; check(vkMapMemory(device,outMemory,0,size,0,&mapped),"map buffer"); std::memcpy(mapped,source,size); vkUnmapMemory(device,outMemory);
     };
     VkBuffer vertexBuffer=VK_NULL_HANDLE,indexBuffer=VK_NULL_HANDLE; VkDeviceMemory vertexMemory=VK_NULL_HANDLE,indexMemory=VK_NULL_HANDLE;
-    buffer(sizeof(vertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices.data(),vertexBuffer,vertexMemory);
-    buffer(sizeof(indices),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,indices.data(),indexBuffer,indexMemory);
+    buffer(vertices.size() * sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices.data(),vertexBuffer,vertexMemory);
+    buffer(indices.size() * sizeof(uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,indices.data(),indexBuffer,indexMemory);
 
     VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO}; poolInfo.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; poolInfo.queueFamilyIndex=family;
     VkCommandPool pool=VK_NULL_HANDLE; check(vkCreateCommandPool(device,&poolInfo,nullptr,&pool),"command pool");
@@ -224,7 +246,7 @@ int main() {
       vkCmdBeginRenderPass(commands[image],&render,VK_SUBPASS_CONTENTS_INLINE);
       vkCmdBindPipeline(commands[image],VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline); VkDeviceSize offset=0;
       vkCmdBindVertexBuffers(commands[image],0,1,&vertexBuffer,&offset); vkCmdBindIndexBuffer(commands[image],indexBuffer,0,VK_INDEX_TYPE_UINT32);
-      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush); vkCmdDrawIndexed(commands[image],3,1,0,0,0);
+      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush); vkCmdDrawIndexed(commands[image],static_cast<uint32_t>(indices.size()),1,0,0,0);
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
