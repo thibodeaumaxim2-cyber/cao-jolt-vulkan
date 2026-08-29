@@ -13,6 +13,7 @@ JoltBridge::~JoltBridge() { shutdown(); }
 
 void JoltBridge::initialize() {
   if (impl_->ready) return;
+  JPH::RegisterDefaultAllocator();
   JPH::Factory::sInstance = new JPH::Factory();
   JPH::RegisterTypes();
   impl_->ready = true;
