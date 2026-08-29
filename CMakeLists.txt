@@ -5,8 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
-# Point this at a Jolt source/build/install directory, or pass JOLT_LIBRARY and
-# JOLT_INCLUDE_DIR explicitly. A precompiled Jolt library is fully supported.
 set(JOLT_ROOT "" CACHE PATH "Jolt source, build, or install directory")
 set(JOLT_LIBRARY "" CACHE FILEPATH "Full path to the compiled Jolt library")
 set(JOLT_INCLUDE_DIR "" CACHE PATH "Directory containing Jolt/Jolt.h")
@@ -42,9 +40,6 @@ if(JOLT_ROOT)
 endif()
 find_package(Jolt CONFIG QUIET)
 
-# Jolt publishes its CMake project in the Build directory. This path keeps the
-# downloaded source in CMake's build tree and compiles the library as part of
-# the same build, so no manual Jolt installation is required.
 if(NOT TARGET Jolt::Jolt AND NOT JOLT_ROOT AND NOT JOLT_LIBRARY AND CAO_FETCH_JOLT)
   FetchContent_Declare(jolt
     GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
@@ -54,8 +49,6 @@ if(NOT TARGET Jolt::Jolt AND NOT JOLT_ROOT AND NOT JOLT_LIBRARY AND CAO_FETCH_JO
   if(NOT jolt_POPULATED)
     FetchContent_Populate(jolt)
     set(DOUBLE_PRECISION OFF CACHE BOOL "" FORCE)
-    # The CAO app uses Jolt rigid-body physics only. Disable Jolt's optional
-    # compute backends so its HLSL shaders do not require Microsoft's dxc.
     set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
     set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
     set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
@@ -96,36 +89,41 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
 endif()
 
 if(CAO_RENDERER STREQUAL "VULKAN")
-add_executable(cao-jolt src/vulkan_main.cpp)
-add_library(cao-editor-core
-  src/editor/Scene.cpp
-  src/editor/Picking.cpp
-  src/editor/JoltBridge.cpp
-  src/editor/UiController.cpp)
-target_include_directories(cao-editor-core PUBLIC src)
-add_library(cao-vulkan-renderer
-  src/renderer/VulkanRenderer.cpp
-  src/renderer/ShaderLoader.cpp
-  src/renderer/VulkanResources.cpp)
-target_include_directories(cao-vulkan-renderer PUBLIC src)
+  add_executable(cao-jolt src/vulkan_main.cpp)
+  add_library(cao-editor-core
+    src/editor/Scene.cpp
+    src/editor/Picking.cpp
+    src/editor/JoltBridge.cpp
+    src/editor/UiController.cpp)
+  target_include_directories(cao-editor-core PUBLIC src)
+  add_library(cao-vulkan-renderer
+    src/renderer/VulkanRenderer.cpp
+    src/renderer/ShaderLoader.cpp
+    src/renderer/VulkanResources.cpp)
+  target_include_directories(cao-vulkan-renderer PUBLIC src)
 else()
   add_executable(cao-jolt src/main.cpp)
 endif()
+
 target_include_directories(cao-jolt PRIVATE src)
 if(TARGET glfw)
   set(CAO_GLFW_TARGET glfw)
 else()
   set(CAO_GLFW_TARGET glfw3)
 endif()
+
 if(CAO_RENDERER STREQUAL "VULKAN")
   target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_VULKAN=1)
-target_link_libraries(cao-jolt PRIVATE Vulkan::Vulkan ${CAO_GLFW_TARGET} nlohmann_json::nlohmann_json Jolt::Jolt)
-target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt)
-target_link_libraries(cao-vulkan-renderer PUBLIC Vulkan::Vulkan cao-editor-core)
+  target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt)
+  target_link_libraries(cao-vulkan-renderer PUBLIC Vulkan::Vulkan cao-editor-core)
+  target_link_libraries(cao-jolt PRIVATE Vulkan::Vulkan ${CAO_GLFW_TARGET}
+    nlohmann_json::nlohmann_json Jolt::Jolt cao-editor-core cao-vulkan-renderer)
 else()
   target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_OPENGL=1)
-  target_link_libraries(cao-jolt PRIVATE OpenGL::GL ${CAO_GLFW_TARGET} nlohmann_json::nlohmann_json Jolt::Jolt)
+  target_link_libraries(cao-jolt PRIVATE OpenGL::GL ${CAO_GLFW_TARGET}
+    nlohmann_json::nlohmann_json Jolt::Jolt)
 endif()
+
 if(UNIX AND NOT APPLE)
   target_link_libraries(cao-jolt PRIVATE dl pthread)
 endif()
@@ -140,5 +138,4 @@ add_custom_target(cao-shaders ALL
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.vert -o ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.frag -o ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
   DEPENDS assets/shaders/cad.vert assets/shaders/cad.frag)
-
 add_dependencies(cao-jolt cao-shaders)
