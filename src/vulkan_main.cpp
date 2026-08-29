@@ -14,7 +14,8 @@
 #include <vector>
 
 static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
-static bool gDragging = false, gPanning = false;
+static bool gDragging = false, gPanning = false, gSimulationRunning = false;
+static int gTintMode = 0;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *, double x, double y) {
   if (gDragging) { gYaw += static_cast<float>(x - gLastX) * 0.008f; gPitch = std::clamp(gPitch + static_cast<float>(y - gLastY) * 0.006f, -1.25f, 0.15f); }
@@ -29,8 +30,13 @@ static void mouseButton(GLFWwindow *window, int button, int action, int) {
   glfwGetCursorPos(window, &gLastX, &gLastY);
 }
 static void key(GLFWwindow *, int key, int, int action, int) {
-  if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+  if (action != GLFW_PRESS) return;
+  if (key == GLFW_KEY_R) {
     gYaw = 0.55f; gPitch = -0.55f; gZoom = 1.0f; gPanX = 0.0f; gPanY = 0.0f;
+  } else if (key == GLFW_KEY_SPACE) {
+    gSimulationRunning = !gSimulationRunning;
+  } else if (key == GLFW_KEY_H) {
+    gTintMode = (gTintMode + 1) % 3;
   }
 }
 
@@ -341,7 +347,12 @@ int main() {
       std::memcpy(drawPush.mvp, mvp.v, sizeof(drawPush.mvp));
     };
     while (!glfwWindowShouldClose(window)) {
-      glfwPollEvents(); updateCamera(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
+      glfwPollEvents();
+      if (gSimulationRunning) gYaw += 0.006f;
+      updateCamera();
+      const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
+      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | Space: play/pause | H: highlight").c_str());
+      check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
       if (acquire==VK_ERROR_OUT_OF_DATE_KHR) continue; check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
       VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; check(vkBeginCommandBuffer(commands[image],&begin),"begin command");
@@ -350,6 +361,9 @@ int main() {
       vkCmdBeginRenderPass(commands[image],&render,VK_SUBPASS_CONTENTS_INLINE);
       vkCmdBindPipeline(commands[image],VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline); VkDeviceSize offset=0;
       vkCmdBindVertexBuffers(commands[image],0,1,&vertexBuffer,&offset); vkCmdBindIndexBuffer(commands[image],indexBuffer,0,VK_INDEX_TYPE_UINT32);
+      if (gTintMode == 0) { drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=1.0f; }
+      if (gTintMode == 1) { drawPush.tint[0]=1.0f; drawPush.tint[1]=0.82f; drawPush.tint[2]=0.28f; }
+      if (gTintMode == 2) { drawPush.tint[0]=0.45f; drawPush.tint[1]=0.92f; drawPush.tint[2]=1.0f; }
       vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush); vkCmdDrawIndexed(commands[image],static_cast<uint32_t>(indices.size()),1,0,0,0);
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
