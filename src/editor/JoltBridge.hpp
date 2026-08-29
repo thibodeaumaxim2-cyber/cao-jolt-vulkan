@@ -14,6 +14,8 @@ class JoltBridge {
   void rebuild(Scene&);
   void step(Scene&, float seconds);
   void demolish(const Scene&);
+  void setRobotScript(int script);
+  int robotScript() const;
   void shutdown();
   bool initialized() const;
 
