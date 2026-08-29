@@ -137,12 +137,12 @@ int main() {
   try {
     if (!glfwInit()) return 1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(1280, 800, "CAO Jolt Vulkan - Triangle", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(1280, 800, "Jolt Robot Simulator - Triangle", nullptr, nullptr);
     if (!window) throw std::runtime_error("Cannot create window");
     JoltBridge physics;
     physics.initialize();
     Scene scene;
-    scene.buildPyramid(3, false);
+    scene.buildQuadruped();
     physics.rebuild(scene);
     glfwSetCursorPosCallback(window, cursor);
     glfwSetMouseButtonCallback(window, mouseButton);
@@ -452,8 +452,8 @@ int main() {
         }
         if (ImGui::BeginMenu("Simulation")) {
           if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
-          if (ImGui::MenuItem("Build pyramid", "B")) gBuildRequested = true;
-          if (ImGui::MenuItem("Destroy pyramid", "D")) gDemoRequested = true;
+          if (ImGui::MenuItem("Reset quadruped", "B")) gBuildRequested = true;
+          if (ImGui::MenuItem("Drop robot", "D")) gDemoRequested = true;
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
