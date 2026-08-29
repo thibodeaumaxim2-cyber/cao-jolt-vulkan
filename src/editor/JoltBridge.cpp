@@ -104,9 +104,11 @@ void JoltBridge::demolish(const Scene &scene) {
     const float side = (object.id % 2u == 0u) ? 1.0f : -1.0f;
     const float forward = ((object.id / 2u) % 2u == 0u) ? 1.0f : -1.0f;
     const float height = std::max(0.0f, object.transform.position.y);
-    bodies.AddImpulse(it->second,
-        JPH::Vec3(side * (3.5f + height), 2.0f + height * 1.8f,
-                  forward * (2.5f + height)));
+    const JPH::Vec3 blast(side * (6.0f + height), 5.0f + height * 2.0f,
+                               forward * (5.0f + height));
+    bodies.ActivateBody(it->second);
+    bodies.SetLinearVelocity(it->second, blast);
+    bodies.AddImpulse(it->second, blast * 2.0f);
   }
 }
 
