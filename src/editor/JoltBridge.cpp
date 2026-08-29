@@ -19,7 +19,7 @@ struct JoltBridge::Impl {
   CaoBroadPhaseLayerInterface broadPhaseLayers;
   CaoObjectVsBroadPhaseFilter objectVsBroadPhase;
   CaoObjectLayerPairFilter objectPairs;
-  JPH::PhysicsSystem physics;
+  std::unique_ptr<JPH::PhysicsSystem> physics;
   std::unique_ptr<JPH::TempAllocatorImpl> allocator;
   std::unique_ptr<JPH::JobSystemThreadPool> jobs;
   std::unordered_map<uint32_t, JPH::BodyID> bodies;
@@ -35,9 +35,10 @@ void JoltBridge::initialize() {
   JPH::Factory::sInstance = new JPH::Factory();
   JPH::RegisterTypes();
 
-  impl_->physics.Init(2048, 0, 4096, 4096,
-                      impl_->broadPhaseLayers, impl_->objectVsBroadPhase,
-                      impl_->objectPairs);
+  impl_->physics = std::make_unique<JPH::PhysicsSystem>();
+  impl_->physics->Init(2048, 0, 4096, 4096,
+                       impl_->broadPhaseLayers, impl_->objectVsBroadPhase,
+                       impl_->objectPairs);
   impl_->allocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
   const unsigned int workers = std::max(1u, std::thread::hardware_concurrency() > 1
       ? std::thread::hardware_concurrency() - 1 : 1u);
@@ -49,7 +50,7 @@ void JoltBridge::initialize() {
 void JoltBridge::rebuild(Scene &scene) {
   if (!impl_->ready) return;
 
-  auto &bodies = impl_->physics.GetBodyInterface();
+  auto &bodies = impl_->physics->GetBodyInterface();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
@@ -91,9 +92,9 @@ void JoltBridge::rebuild(Scene &scene) {
 
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
-  impl_->physics.Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
+  impl_->physics->Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
 
-  const auto &lockInterface = impl_->physics.GetBodyLockInterface();
+  const auto &lockInterface = impl_->physics->GetBodyLockInterface();
   for (SceneObject &object : scene.objects()) {
     const auto it = impl_->bodies.find(object.id);
     if (it == impl_->bodies.end()) continue;
@@ -109,7 +110,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
 
 void JoltBridge::shutdown() {
   if (!impl_ || !impl_->ready) return;
-  auto &bodies = impl_->physics.GetBodyInterface();
+  auto &bodies = impl_->physics->GetBodyInterface();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
@@ -122,6 +123,8 @@ void JoltBridge::shutdown() {
   }
   impl_->jobs.reset();
   impl_->allocator.reset();
+  // PhysicsSystem owns Jolt shapes and must go away while Factory is valid.
+  impl_->physics.reset();
   JPH::UnregisterTypes();
   delete JPH::Factory::sInstance;
   JPH::Factory::sInstance = nullptr;
