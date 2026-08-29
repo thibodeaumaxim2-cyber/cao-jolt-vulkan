@@ -12,6 +12,23 @@
 #include <string>
 #include <vector>
 
+static float gYaw = 0.0f, gZoom = 1.0f;
+static bool gDragging = false;
+static double gLastX = 0.0, gLastY = 0.0;
+static void cursor(GLFWwindow *, double x, double y) {
+  if (gDragging) gYaw += static_cast<float>(x - gLastX) * 0.008f;
+  gLastX = x; gLastY = y;
+}
+static void mouseButton(GLFWwindow *window, int button, int action, int) {
+  if (button == GLFW_MOUSE_BUTTON_LEFT) {
+    gDragging = action == GLFW_PRESS;
+    glfwGetCursorPos(window, &gLastX, &gLastY);
+  }
+}
+static void scroll(GLFWwindow *, double, double y) {
+  gZoom = std::clamp(gZoom * (1.0f + static_cast<float>(y) * 0.10f), 0.35f, 2.5f);
+}
+
 static void check(VkResult result, const char *what) {
   if (result != VK_SUCCESS)
     throw std::runtime_error(std::string(what) + " (" + std::to_string(result) + ")");
@@ -60,6 +77,9 @@ int main() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow *window = glfwCreateWindow(1280, 800, "CAO Jolt Vulkan - Triangle", nullptr, nullptr);
     if (!window) throw std::runtime_error("Cannot create window");
+    glfwSetCursorPosCallback(window, cursor);
+    glfwSetMouseButtonCallback(window, mouseButton);
+    glfwSetScrollCallback(window, scroll);
 
     uint32_t extensionCount = 0;
     const char **extensions = glfwGetRequiredInstanceExtensions(&extensionCount);
@@ -235,9 +255,16 @@ int main() {
     VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO}; fenceInfo.flags=VK_FENCE_CREATE_SIGNALED_BIT; VkFence fence;
     check(vkCreateFence(device,&fenceInfo,nullptr,&fence),"fence");
 
-    Push drawPush{}; drawPush.mvp[0]=drawPush.mvp[5]=drawPush.mvp[10]=drawPush.mvp[15]=1; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
+    Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
+    auto updateCamera = [&] {
+      const float c = std::cos(gYaw) * gZoom, sn = std::sin(gYaw) * gZoom;
+      std::fill(std::begin(drawPush.mvp), std::end(drawPush.mvp), 0.0f);
+      drawPush.mvp[0] = c; drawPush.mvp[1] = sn;
+      drawPush.mvp[4] = -sn; drawPush.mvp[5] = c;
+      drawPush.mvp[10] = 1.0f; drawPush.mvp[15] = 1.0f;
+    };
     while (!glfwWindowShouldClose(window)) {
-      glfwPollEvents(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
+      glfwPollEvents(); updateCamera(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
       if (acquire==VK_ERROR_OUT_OF_DATE_KHR) continue; check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
       VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; check(vkBeginCommandBuffer(commands[image],&begin),"begin command");
