@@ -1,0 +1,3 @@
+#include "Picking.hpp"
+#include <limits>
+std::optional<uint32_t> pickObject(const Scene&s,Ray ray){float best=std::numeric_limits<float>::max();std::optional<uint32_t> hit;for(const auto&o:s.objects()){Vec3 r=ray.origin-o.transform.position;Vec3 half=o.transform.scale*.5f;float tmin=0,tmax=best;for(int a=0;a<3;a++){float ro=a==0?r.x:a==1?r.y:r.z,rd=a==0?ray.direction.x:a==1?ray.direction.y:ray.direction.z,h=a==0?half.x:a==1?half.y:half.z;if(std::abs(rd)<1e-5f){if(std::abs(ro)>h){tmin=1;tmax=0;break;}}else{float t1=(-h-ro)/rd,t2=(h-ro)/rd;if(t1>t2)std::swap(t1,t2);tmin=std::max(tmin,t1);tmax=std::min(tmax,t2);}}if(tmax>=tmin&&tmin<best){best=tmin;hit=o.id;}}return hit;}
