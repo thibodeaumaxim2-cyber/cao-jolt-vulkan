@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 #include "editor/JoltBridge.hpp"
+#include "editor/Scene.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,7 @@
 static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
 static bool gDragging = false, gPanning = false, gSimulationRunning = false;
 static int gTintMode = 0;
+static bool gBuildRequested = false, gDemoRequested = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *, double x, double y) {
   if (gDragging) { gYaw += static_cast<float>(x - gLastX) * 0.008f; gPitch = std::clamp(gPitch + static_cast<float>(y - gLastY) * 0.006f, -1.25f, 0.15f); }
@@ -38,6 +40,10 @@ static void key(GLFWwindow *, int key, int, int action, int) {
     gSimulationRunning = !gSimulationRunning;
   } else if (key == GLFW_KEY_H) {
     gTintMode = (gTintMode + 1) % 3;
+  } else if (key == GLFW_KEY_B) {
+    gBuildRequested = true;
+  } else if (key == GLFW_KEY_D) {
+    gDemoRequested = true;
   }
 }
 
@@ -122,6 +128,9 @@ int main() {
     if (!window) throw std::runtime_error("Cannot create window");
     JoltBridge physics;
     physics.initialize();
+    Scene scene;
+    scene.buildPyramid(3, false);
+    physics.rebuild(scene);
     glfwSetCursorPosCallback(window, cursor);
     glfwSetMouseButtonCallback(window, mouseButton);
     glfwSetScrollCallback(window, scroll);
@@ -281,40 +290,42 @@ int main() {
     VkPipeline pipeline=VK_NULL_HANDLE; check(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pipelineInfo,nullptr,&pipeline),"graphics pipeline");
     vkDestroyShaderModule(device, fragmentShader, nullptr); vkDestroyShaderModule(device, vertexShader, nullptr);
 
-    // First native CAO scene: a 3-2-1 cube pyramid centred in the work area.
+    // CAO scene geometry: a reusable cube mesh plus a separate indexed grid.
+    // Every pyramid object is drawn independently, so the Jolt bridge can move it.
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    const std::array<std::array<float, 3>, 3> layerColors{{
-        {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
-    }};
-    auto addBlock = [&](float x, float y, float size, const std::array<float, 3> &color) {
-      // Eight corners and six faces: this is real cube geometry, not a screen tile.
-      const uint32_t first = static_cast<uint32_t>(vertices.size());
-      const float z0 = -0.10f, z1 = z0 + size;
+    struct DrawItem { uint32_t firstIndex; uint32_t indexCount; uint32_t objectId; };
+    std::vector<DrawItem> objectDraws;
+
+    auto addBlock = [&](const std::array<float, 3> &color, uint32_t objectId) {
+      const uint32_t firstVertex = static_cast<uint32_t>(vertices.size());
+      const uint32_t firstIndex = static_cast<uint32_t>(indices.size());
+      constexpr float h = 0.46f;
       const std::array<Vertex, 8> cube{{
-          {{x,        y,        z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
-          {{x + size, y,        z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
-          {{x + size, y + size, z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
-          {{x,        y + size, z0}, {color[0] * 0.55f, color[1] * 0.55f, color[2] * 0.55f}},
-          {{x,        y,        z1}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
-          {{x + size, y,        z1}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
-          {{x + size, y + size, z1}, {color[0], color[1], color[2]}},
-          {{x,        y + size, z1}, {color[0], color[1], color[2]}}
+          {{-h,-h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
+          {{ h,-h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
+          {{ h, h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
+          {{-h, h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
+          {{-h,-h, h}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
+          {{ h,-h, h}, {color[0] * 0.78f, color[1] * 0.78f, color[2] * 0.78f}},
+          {{ h, h, h}, {color[0], color[1], color[2]}},
+          {{-h, h, h}, {color[0], color[1], color[2]}}
       }};
       vertices.insert(vertices.end(), cube.begin(), cube.end());
       indices.insert(indices.end(), {
-          first, first+1, first+2, first+2, first+3, first,
-          first+4, first+6, first+5, first+6, first+4, first+7,
-          first, first+4, first+5, first+5, first+1, first,
-          first+1, first+5, first+6, first+6, first+2, first+1,
-          first+2, first+6, first+7, first+7, first+3, first+2,
-          first+3, first+7, first+4, first+4, first, first+3
+          firstVertex, firstVertex+1, firstVertex+2, firstVertex+2, firstVertex+3, firstVertex,
+          firstVertex+4, firstVertex+6, firstVertex+5, firstVertex+6, firstVertex+4, firstVertex+7,
+          firstVertex, firstVertex+4, firstVertex+5, firstVertex+5, firstVertex+1, firstVertex,
+          firstVertex+1, firstVertex+5, firstVertex+6, firstVertex+6, firstVertex+2, firstVertex+1,
+          firstVertex+2, firstVertex+6, firstVertex+7, firstVertex+7, firstVertex+3, firstVertex+2,
+          firstVertex+3, firstVertex+7, firstVertex+4, firstVertex+4, firstVertex, firstVertex+3
       });
+      objectDraws.push_back({firstIndex, 36u, objectId});
     };
     auto addGridStrip = [&](float x0, float z0, float x1, float z1,
                             float width, const std::array<float, 3> &color) {
       const uint32_t first = static_cast<uint32_t>(vertices.size());
-      const float y = -0.635f;
+      const float y = -0.01f;
       const float dx = x1 - x0, dz = z1 - z0;
       const float length = std::sqrt(dx * dx + dz * dz);
       const float ox = -dz / length * width, oz = dx / length * width;
@@ -324,25 +335,26 @@ int main() {
           {{x1 - ox, y, z1 - oz}, {color[0], color[1], color[2]}},
           {{x0 - ox, y, z0 - oz}, {color[0], color[1], color[2]}}
       });
-      indices.insert(indices.end(), {first, first + 1, first + 2, first + 2, first + 3, first});
+      indices.insert(indices.end(), {first, first+1, first+2, first+2, first+3, first});
     };
-    constexpr float gridExtent = 1.5f, gridStep = 0.15f;
+    constexpr float gridExtent = 5.0f, gridStep = 0.5f;
     const std::array<float, 3> gridColor{{0.12f, 0.24f, 0.31f}};
     for (int i = -10; i <= 10; ++i) {
       const float offset = static_cast<float>(i) * gridStep;
-      addGridStrip(-gridExtent, offset, gridExtent, offset, 0.006f, gridColor);
-      addGridStrip(offset, -gridExtent, offset, gridExtent, 0.006f, gridColor);
+      addGridStrip(-gridExtent, offset, gridExtent, offset, 0.010f, gridColor);
+      addGridStrip(offset, -gridExtent, offset, gridExtent, 0.010f, gridColor);
     }
-    addGridStrip(-gridExtent, 0.0f, gridExtent, 0.0f, 0.015f, {{0.92f, 0.18f, 0.18f}});
-    addGridStrip(0.0f, -gridExtent, 0.0f, gridExtent, 0.015f, {{0.18f, 0.76f, 0.32f}});
-    constexpr float block = 0.22f;
-    for (int row = 0; row < 3; ++row)
-      for (int col = 0; col < 3; ++col)
-        addBlock(-0.33f + col * block, -0.62f + row * block, block * 0.92f, layerColors[0]);
-    for (int row = 0; row < 2; ++row)
-      for (int col = 0; col < 2; ++col)
-        addBlock(-0.22f + col * block, 0.04f + row * block, block * 0.92f, layerColors[1]);
-    addBlock(-0.11f, 0.48f, block * 0.92f, layerColors[2]);
+    addGridStrip(-gridExtent, 0.0f, gridExtent, 0.0f, 0.025f, {{0.92f, 0.18f, 0.18f}});
+    addGridStrip(0.0f, -gridExtent, 0.0f, gridExtent, 0.025f, {{0.18f, 0.76f, 0.32f}});
+    const uint32_t gridIndexCount = static_cast<uint32_t>(indices.size());
+
+    const std::array<std::array<float, 3>, 3> layerColors{{
+        {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
+    }};
+    for (const SceneObject &object : scene.objects()) {
+      const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
+      addBlock(layerColors[layer], object.id);
+    }
     auto buffer = [&](VkDeviceSize size, VkBufferUsageFlags usage, const void *source, VkBuffer &outBuffer, VkDeviceMemory &outMemory) {
       VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; info.size=size; info.usage=usage; info.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
       check(vkCreateBuffer(device,&info,nullptr,&outBuffer),"buffer"); VkMemoryRequirements requirements{}; vkGetBufferMemoryRequirements(device,outBuffer,&requirements);
@@ -366,19 +378,29 @@ int main() {
     check(vkCreateFence(device,&fenceInfo,nullptr,&fence),"fence");
 
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
+    Mat4 cameraMvp{};
     auto updateCamera = [&] {
       const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-      const Mat4 model = multiply(translate(gPanX, gPanY - 0.03f, -2.35f),
+      const Mat4 camera = multiply(translate(gPanX, gPanY - 1.15f, -8.0f),
                          multiply(rotateX(gPitch), multiply(rotateY(gYaw), scale(gZoom))));
-      const Mat4 mvp = multiply(perspective(1.05f, aspect, 0.05f, 50.0f), model);
+      cameraMvp = multiply(perspective(1.05f, aspect, 0.05f, 50.0f), camera);
+    };
+    auto setMvp = [&](const Mat4 &model) {
+      const Mat4 mvp = multiply(cameraMvp, model);
       std::memcpy(drawPush.mvp, mvp.v, sizeof(drawPush.mvp));
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
-      if (gSimulationRunning) gYaw += 0.006f;
+      if (gBuildRequested) {
+        scene.buildPyramid(3, false); physics.rebuild(scene); gSimulationRunning = false; gBuildRequested = false;
+      }
+      if (gDemoRequested) {
+        scene.buildPyramid(3, true); physics.rebuild(scene); gSimulationRunning = true; gDemoRequested = false;
+      }
+      if (gSimulationRunning) physics.step(scene, 1.0f / 60.0f);
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
-      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | Space: play/pause | H: highlight").c_str());
+      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | B: build | D: falling demo | Space: play/pause").c_str());
       check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
       if (acquire==VK_ERROR_OUT_OF_DATE_KHR) continue; check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
@@ -391,7 +413,17 @@ int main() {
       if (gTintMode == 0) { drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=1.0f; }
       if (gTintMode == 1) { drawPush.tint[0]=1.0f; drawPush.tint[1]=0.82f; drawPush.tint[2]=0.28f; }
       if (gTintMode == 2) { drawPush.tint[0]=0.45f; drawPush.tint[1]=0.92f; drawPush.tint[2]=1.0f; }
-      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush); vkCmdDrawIndexed(commands[image],static_cast<uint32_t>(indices.size()),1,0,0,0);
+      setMvp(identity());
+      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush);
+      vkCmdDrawIndexed(commands[image], gridIndexCount, 1, 0, 0, 0);
+      for (const DrawItem &draw : objectDraws) {
+        const SceneObject *object = scene.find(draw.objectId);
+        if (!object) continue;
+        const Transform &t = object->transform;
+        setMvp(multiply(translate(t.position.x, t.position.y, t.position.z), scale(t.scale.x)));
+        vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush);
+        vkCmdDrawIndexed(commands[image], draw.indexCount, 1, draw.firstIndex, 0, 0);
+      }
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
