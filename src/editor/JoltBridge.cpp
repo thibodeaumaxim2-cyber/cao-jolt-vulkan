@@ -6,7 +6,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Physics/JobSystem/JobSystemThreadPool.h>
+#include <Jolt/Core/JobSystemThreadPool.h>
 
 #include <algorithm>
 #include <thread>
