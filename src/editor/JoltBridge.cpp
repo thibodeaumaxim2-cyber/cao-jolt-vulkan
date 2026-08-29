@@ -6,6 +6,8 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyLockInterface.h>
+#include <Jolt/Physics/Constraints/HingeConstraint.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -23,6 +25,7 @@ struct JoltBridge::Impl {
   std::unique_ptr<JPH::TempAllocatorImpl> allocator;
   std::unique_ptr<JPH::JobSystemThreadPool> jobs;
   std::unordered_map<uint32_t, JPH::BodyID> bodies;
+  std::vector<JPH::Ref<JPH::HingeConstraint>> actuators;
   JPH::BodyID ground;
 };
 
@@ -51,6 +54,8 @@ void JoltBridge::rebuild(Scene &scene) {
   if (!impl_->ready) return;
 
   auto &bodies = impl_->physics->GetBodyInterface();
+  for (const auto &actuator : impl_->actuators) impl_->physics->RemoveConstraint(actuator);
+  impl_->actuators.clear();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
@@ -95,6 +100,45 @@ void JoltBridge::rebuild(Scene &scene) {
     impl_->bodies.emplace(object.id, body);
     object.joltBody = body.GetIndexAndSequenceNumber();
   }
+
+  if (scene.isQuadruped()) {
+    const auto findBody = [&](const std::string &name) -> JPH::BodyID {
+      for (const SceneObject &object : scene.objects())
+        if (object.name == name) return impl_->bodies.at(object.id);
+      return JPH::BodyID();
+    };
+    const auto addHinge = [&](const std::string &parent, const std::string &child,
+                               float x, float y, float z, float minAngle,
+                               float maxAngle, float targetAngle, float maxTorque) {
+      const JPH::BodyID parentId = findBody(parent), childId = findBody(child);
+      if (parentId.IsInvalid() || childId.IsInvalid()) return;
+      const auto &locks = impl_->physics->GetBodyLockInterface();
+      JPH::BodyLockWrite parentLock(locks, parentId);
+      JPH::BodyLockWrite childLock(locks, childId);
+      if (!parentLock.Succeeded() || !childLock.Succeeded()) return;
+      JPH::HingeConstraintSettings settings;
+      settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+      settings.mPoint1 = settings.mPoint2 = JPH::RVec3(x, y, z);
+      settings.mHingeAxis1 = settings.mHingeAxis2 = JPH::Vec3::sAxisZ();
+      settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
+      settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
+      settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
+      JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
+          parentLock.GetBody(), childLock.GetBody(), settings);
+      actuator->SetMotorState(JPH::EMotorState::Position);
+      actuator->SetTargetAngle(targetAngle); // radians
+      impl_->physics->AddConstraint(actuator);
+      impl_->actuators.emplace_back(std::move(actuator));
+    };
+    for (int side : {-1, 1}) for (int end : {-1, 1}) {
+      const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
+          " " + (side < 0 ? "Left" : "Right");
+      const float x = 0.64f * side, z = 0.30f * end;
+      addHinge("Torso", prefix + " Hip", x, 2.22f, z, -0.85f, 0.85f, 0.18f * end, 55.0f);
+      addHinge(prefix + " Hip", prefix + " Shin", x, 1.60f, z, -1.45f, 0.15f, -0.70f, 42.0f);
+      addHinge(prefix + " Shin", prefix + " Foot", x, 0.65f, z, -0.55f, 0.55f, 0.05f, 20.0f);
+    }
+  }
 }
 
 
@@ -137,6 +181,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
 void JoltBridge::shutdown() {
   if (!impl_ || !impl_->ready) return;
   auto &bodies = impl_->physics->GetBodyInterface();
+  for (const auto &actuator : impl_->actuators) impl_->physics->RemoveConstraint(actuator);
+  impl_->actuators.clear();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
