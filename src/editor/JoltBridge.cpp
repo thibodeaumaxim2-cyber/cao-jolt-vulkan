@@ -214,11 +214,11 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.06f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     for (size_t i = 0; i < impl_->rotaryActuators.size(); ++i) {
-      const float pairPhase = phase + ((i / 2u) % 2u == 0u ? 0.0f : JPH_PI);
+      const float pairPhase = phase + ((i / 2u) % 2u == 0u ? 0.0f : JPH::JPH_PI);
       impl_->rotaryActuators[i]->SetTargetAngle((i % 2u == 0u ? 0.32f : 0.16f) * std::sin(pairPhase));
     }
     for (size_t i = 0; i < impl_->linearActuators.size(); ++i) {
-      const float legPhase = phase + ((impl_->script == 1 ? i : i / 2u) % 2u == 0u ? 0.0f : JPH_PI);
+      const float legPhase = phase + ((impl_->script == 1 ? i : i / 2u) % 2u == 0u ? 0.0f : JPH::JPH_PI);
       impl_->linearActuators[i]->SetTargetPosition(-0.06f + 0.11f * std::max(0.0f, std::sin(legPhase)));
     }
   } else if (impl_->script == 3) { // Repeated jump
