@@ -132,10 +132,19 @@ if(MSVC)
   target_compile_definitions(cao-jolt PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-install(TARGETS cao-jolt RUNTIME DESTINATION bin)
 find_program(GLSLC_EXECUTABLE glslc REQUIRED)
 add_custom_target(cao-shaders ALL
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.vert -o ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.frag -o ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
   DEPENDS assets/shaders/cad.vert assets/shaders/cad.frag)
+
 add_dependencies(cao-jolt cao-shaders)
+if(TARGET cao-vulkan-renderer)
+  add_dependencies(cao-vulkan-renderer cao-shaders)
+endif()
+
+install(TARGETS cao-jolt RUNTIME DESTINATION bin)
+install(FILES
+  ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
+  ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
+  DESTINATION share/cao-jolt/shaders)
