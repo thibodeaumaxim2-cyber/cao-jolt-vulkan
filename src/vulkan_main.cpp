@@ -1,6 +1,6 @@
 #define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <array>
@@ -159,9 +159,9 @@ int main() {
       check(vkCreateFramebuffer(device, &info, nullptr, &framebuffers[i]), "framebuffer");
     }
 
-    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Push)};
+    VkPushConstantRange pushRange{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Push)};
     VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    layoutInfo.pushConstantRangeCount = 1; layoutInfo.pPushConstantRanges = &push;
+    layoutInfo.pushConstantRangeCount = 1; layoutInfo.pPushConstantRanges = &pushRange;
     VkPipelineLayout layout = VK_NULL_HANDLE; check(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout), "pipeline layout");
     VkShaderModule vertexShader = shader(device, "cad.vert.spv"), fragmentShader = shader(device, "cad.frag.spv");
     VkPipelineShaderStageCreateInfo stages[2]{{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}};
@@ -213,7 +213,7 @@ int main() {
     VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO}; fenceInfo.flags=VK_FENCE_CREATE_SIGNALED_BIT; VkFence fence;
     check(vkCreateFence(device,&fenceInfo,nullptr,&fence),"fence");
 
-    Push push{}; push.mvp[0]=push.mvp[5]=push.mvp[10]=push.mvp[15]=1; push.tint[0]=push.tint[1]=push.tint[2]=push.tint[3]=1;
+    Push drawPush{}; drawPush.mvp[0]=drawPush.mvp[5]=drawPush.mvp[10]=drawPush.mvp[15]=1; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents(); check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
@@ -224,7 +224,7 @@ int main() {
       vkCmdBeginRenderPass(commands[image],&render,VK_SUBPASS_CONTENTS_INLINE);
       vkCmdBindPipeline(commands[image],VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline); VkDeviceSize offset=0;
       vkCmdBindVertexBuffers(commands[image],0,1,&vertexBuffer,&offset); vkCmdBindIndexBuffer(commands[image],indexBuffer,0,VK_INDEX_TYPE_UINT32);
-      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&push); vkCmdDrawIndexed(commands[image],3,1,0,0,0);
+      vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush); vkCmdDrawIndexed(commands[image],3,1,0,0,0);
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
