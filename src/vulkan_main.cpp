@@ -475,8 +475,10 @@ int main() {
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::TextDisabled("Quadruped: hip 65 N m | linear knee 1,200 N, 0.44 m stroke | ankle 25 N m");
       const char *robotScripts[] = {"Stand", "Walk", "Trot", "Jump"};
-      if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts)))
+      if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts))) {
         physics.setRobotScript(gRobotScript);
+        gSimulationRunning = gRobotScript != 0;
+      }
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
