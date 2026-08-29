@@ -239,6 +239,12 @@ void JoltBridge::step(Scene &scene, float seconds) {
         static_cast<float>(position.GetX()),
         static_cast<float>(position.GetY()),
         static_cast<float>(position.GetZ())};
+    const JPH::Quat rotation = lock.GetBody().GetRotation();
+    const float x = rotation.GetX(), y = rotation.GetY(), z = rotation.GetZ(), w = rotation.GetW();
+    object.transform.rotation = {
+        std::atan2(2.0f * (w * x + y * z), 1.0f - 2.0f * (x * x + y * y)),
+        std::asin(std::clamp(2.0f * (w * y - z * x), -1.0f, 1.0f)),
+        std::atan2(2.0f * (w * z + x * y), 1.0f - 2.0f * (y * y + z * z))};
   }
 }
 
