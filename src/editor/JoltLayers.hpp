@@ -1,11 +1,7 @@
 #pragma once
 
 #include <Jolt/Jolt.h>
-#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
-#include <Jolt/Physics/Collision/ObjectLayer.h>
-#include <Jolt/Physics/Collision/ObjectLayerPairFilter.h>
-#include <Jolt/Physics/Collision/ObjectVsBroadPhaseLayerFilter.h>
-#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterface.h>
+#include <Jolt/Physics/PhysicsSystem.h>
 
 namespace CaoObjectLayers {
 static constexpr JPH::ObjectLayer Static = 0;
