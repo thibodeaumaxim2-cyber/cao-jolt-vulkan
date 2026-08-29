@@ -7,6 +7,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLockInterface.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -113,9 +114,11 @@ void JoltBridge::rebuild(Scene &scene) {
       const JPH::BodyID parentId = findBody(parent), childId = findBody(child);
       if (parentId.IsInvalid() || childId.IsInvalid()) return;
       const auto &locks = impl_->physics->GetBodyLockInterface();
-      JPH::BodyLockWrite parentLock(locks, parentId);
-      JPH::BodyLockWrite childLock(locks, childId);
-      if (!parentLock.Succeeded() || !childLock.Succeeded()) return;
+      const JPH::BodyID pair[] = {parentId, childId};
+      JPH::BodyLockMultiWrite pairLock(locks, pair, 2);
+      JPH::Body *parentBody = pairLock.GetBody(0);
+      JPH::Body *childBody = pairLock.GetBody(1);
+      if (parentBody == nullptr || childBody == nullptr) return;
       JPH::HingeConstraintSettings settings;
       settings.mSpace = JPH::EConstraintSpace::WorldSpace;
       settings.mPoint1 = settings.mPoint2 = JPH::RVec3(x, y, z);
@@ -124,7 +127,7 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
-          parentLock.GetBody(), childLock.GetBody(), settings);
+          *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
       actuator->SetTargetAngle(targetAngle); // radians
       impl_->physics->AddConstraint(actuator);
