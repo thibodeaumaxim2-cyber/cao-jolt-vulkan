@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_NONE
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
+#include "editor/JoltBridge.hpp"
 
 #include <algorithm>
 #include <array>
@@ -119,6 +120,8 @@ int main() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow *window = glfwCreateWindow(1280, 800, "CAO Jolt Vulkan - Triangle", nullptr, nullptr);
     if (!window) throw std::runtime_error("Cannot create window");
+    JoltBridge physics;
+    physics.initialize();
     glfwSetCursorPosCallback(window, cursor);
     glfwSetMouseButtonCallback(window, mouseButton);
     glfwSetScrollCallback(window, scroll);
@@ -375,7 +378,7 @@ int main() {
     vkDestroyFence(device,fence,nullptr); vkDestroySemaphore(device,finished,nullptr); vkDestroySemaphore(device,available,nullptr);
     vkDestroyCommandPool(device,pool,nullptr); vkDestroyBuffer(device,indexBuffer,nullptr); vkFreeMemory(device,indexMemory,nullptr); vkDestroyBuffer(device,vertexBuffer,nullptr); vkFreeMemory(device,vertexMemory,nullptr);
     vkDestroyPipeline(device,pipeline,nullptr); vkDestroyPipelineLayout(device,layout,nullptr); for(auto fb:framebuffers)vkDestroyFramebuffer(device,fb,nullptr); vkDestroyRenderPass(device,renderPass,nullptr); vkDestroyImageView(device,depthView,nullptr); vkDestroyImage(device,depthImage,nullptr); vkFreeMemory(device,depthMemory,nullptr); for(auto view:views)vkDestroyImageView(device,view,nullptr);
-    vkDestroySwapchainKHR(device,swapchain,nullptr); vkDestroyDevice(device,nullptr); vkDestroySurfaceKHR(instance,surface,nullptr); vkDestroyInstance(instance,nullptr); glfwDestroyWindow(window); glfwTerminate();
+    vkDestroySwapchainKHR(device,swapchain,nullptr); physics.shutdown(); vkDestroyDevice(device,nullptr); vkDestroySurfaceKHR(instance,surface,nullptr); vkDestroyInstance(instance,nullptr); glfwDestroyWindow(window); glfwTerminate();
     return 0;
   } catch (const std::exception &error) { std::cerr << "Fatal: " << error.what() << "\n"; return 4; }
 }
