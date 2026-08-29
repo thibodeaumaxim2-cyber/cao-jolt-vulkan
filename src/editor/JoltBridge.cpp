@@ -28,6 +28,10 @@ struct JoltBridge::Impl {
   std::unique_ptr<JPH::JobSystemThreadPool> jobs;
   std::unordered_map<uint32_t, JPH::BodyID> bodies;
   std::vector<JPH::Ref<JPH::Constraint>> actuators;
+  std::vector<JPH::Ref<JPH::HingeConstraint>> rotaryActuators;
+  std::vector<JPH::Ref<JPH::SliderConstraint>> linearActuators;
+  int script = 0;
+  float scriptTime = 0.0f;
   JPH::BodyID ground;
 };
 
@@ -57,7 +61,7 @@ void JoltBridge::rebuild(Scene &scene) {
 
   auto &bodies = impl_->physics->GetBodyInterface();
   for (const auto &actuator : impl_->actuators) impl_->physics->RemoveConstraint(actuator);
-  impl_->actuators.clear();
+  impl_->actuators.clear(); impl_->rotaryActuators.clear(); impl_->linearActuators.clear();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
@@ -141,6 +145,7 @@ void JoltBridge::rebuild(Scene &scene) {
       actuator->SetMotorState(JPH::EMotorState::Position);
       actuator->SetTargetPosition(targetStroke); // meters
       impl_->physics->AddConstraint(actuator);
+      impl_->linearActuators.emplace_back(actuator);
       impl_->actuators.emplace_back(std::move(actuator));
     };
 
@@ -167,6 +172,7 @@ void JoltBridge::rebuild(Scene &scene) {
       actuator->SetMotorState(JPH::EMotorState::Position);
       actuator->SetTargetAngle(targetAngle); // radians
       impl_->physics->AddConstraint(actuator);
+      impl_->rotaryActuators.emplace_back(actuator);
       impl_->actuators.emplace_back(std::move(actuator));
     };
     for (int side : {-1, 1}) for (int end : {-1, 1}) {
@@ -201,6 +207,25 @@ void JoltBridge::demolish(const Scene &scene) {
 
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
+  impl_->scriptTime += seconds;
+  const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 3.2f);
+  if (impl_->script == 0) { // Stand
+    for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
+    for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.06f);
+  } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
+    for (size_t i = 0; i < impl_->rotaryActuators.size(); ++i) {
+      const float pairPhase = phase + ((i / 2u) % 2u == 0u ? 0.0f : JPH_PI);
+      impl_->rotaryActuators[i]->SetTargetAngle((i % 2u == 0u ? 0.32f : 0.16f) * std::sin(pairPhase));
+    }
+    for (size_t i = 0; i < impl_->linearActuators.size(); ++i) {
+      const float legPhase = phase + ((impl_->script == 1 ? i : i / 2u) % 2u == 0u ? 0.0f : JPH_PI);
+      impl_->linearActuators[i]->SetTargetPosition(-0.06f + 0.11f * std::max(0.0f, std::sin(legPhase)));
+    }
+  } else if (impl_->script == 3) { // Repeated jump
+    const float extension = std::max(0.0f, std::sin(phase));
+    for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
+    for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.16f + 0.31f * extension);
+  }
   impl_->physics->Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
 
   const auto &lockInterface = impl_->physics->GetBodyLockInterface();
@@ -240,6 +265,16 @@ void JoltBridge::shutdown() {
   delete JPH::Factory::sInstance;
   JPH::Factory::sInstance = nullptr;
   impl_->ready = false;
+}
+
+void JoltBridge::setRobotScript(int script) {
+  if (!impl_) return;
+  impl_->script = std::clamp(script, 0, 3);
+  impl_->scriptTime = 0.0f;
+}
+
+int JoltBridge::robotScript() const {
+  return impl_ ? impl_->script : 0;
 }
 
 bool JoltBridge::initialized() const {
