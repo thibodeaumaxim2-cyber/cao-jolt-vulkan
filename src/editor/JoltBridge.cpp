@@ -81,7 +81,7 @@ void JoltBridge::rebuild(Scene &scene) {
     shape.SetEmbedded();
     const JPH::EMotionType motion =
         object.dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static;
-    const JPH::BodyCreationSettings settings(
+    JPH::BodyCreationSettings settings(
         &shape,
         JPH::RVec3(object.transform.position.x, object.transform.position.y,
                    object.transform.position.z),
