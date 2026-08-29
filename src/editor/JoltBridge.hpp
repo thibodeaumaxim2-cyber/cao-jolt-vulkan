@@ -13,6 +13,7 @@ class JoltBridge {
   void initialize();
   void rebuild(Scene&);
   void step(Scene&, float seconds);
+  void demolish(const Scene&);
   void shutdown();
   bool initialized() const;
 
