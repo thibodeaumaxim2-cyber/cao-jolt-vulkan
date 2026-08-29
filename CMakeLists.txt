@@ -103,7 +103,9 @@ add_library(cao-editor-core
   src/editor/JoltBridge.cpp
   src/editor/UiController.cpp)
 target_include_directories(cao-editor-core PUBLIC src)
-add_library(cao-vulkan-renderer src/renderer/VulkanRenderer.cpp)
+add_library(cao-vulkan-renderer
+  src/renderer/VulkanRenderer.cpp
+  src/renderer/ShaderLoader.cpp)
 target_include_directories(cao-vulkan-renderer PUBLIC src)
 else()
   add_executable(cao-jolt src/main.cpp)
