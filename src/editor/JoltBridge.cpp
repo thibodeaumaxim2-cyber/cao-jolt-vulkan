@@ -9,6 +9,7 @@
 #include <Jolt/Physics/Body/BodyLockInterface.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/SliderConstraint.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -26,7 +27,7 @@ struct JoltBridge::Impl {
   std::unique_ptr<JPH::TempAllocatorImpl> allocator;
   std::unique_ptr<JPH::JobSystemThreadPool> jobs;
   std::unordered_map<uint32_t, JPH::BodyID> bodies;
-  std::vector<JPH::Ref<JPH::HingeConstraint>> actuators;
+  std::vector<JPH::Ref<JPH::Constraint>> actuators;
   JPH::BodyID ground;
 };
 
@@ -119,6 +120,30 @@ void JoltBridge::rebuild(Scene &scene) {
         if (object.name == name) return impl_->bodies.at(object.id);
       return JPH::BodyID();
     };
+    const auto addSlider = [&](const std::string &parent, const std::string &child,
+                                float minStroke, float maxStroke, float targetStroke, float maxForce) {
+      const JPH::BodyID parentId = findBody(parent), childId = findBody(child);
+      if (parentId.IsInvalid() || childId.IsInvalid()) return;
+      const auto &locks = impl_->physics->GetBodyLockInterface();
+      const JPH::BodyID pair[] = {parentId, childId};
+      JPH::BodyLockMultiWrite pairLock(locks, pair, 2);
+      JPH::Body *parentBody = pairLock.GetBody(0);
+      JPH::Body *childBody = pairLock.GetBody(1);
+      if (parentBody == nullptr || childBody == nullptr) return;
+      JPH::SliderConstraintSettings settings;
+      settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+      settings.mAutoDetectPoint = true;
+      settings.SetSliderAxis(JPH::Vec3::sAxisY());
+      settings.mLimitsMin = minStroke; settings.mLimitsMax = maxStroke; // meters
+      settings.mMotorSettings.SetForceLimit(maxForce); // N
+      JPH::Ref<JPH::SliderConstraint> actuator = new JPH::SliderConstraint(
+          *parentBody, *childBody, settings);
+      actuator->SetMotorState(JPH::EMotorState::Position);
+      actuator->SetTargetPosition(targetStroke); // meters
+      impl_->physics->AddConstraint(actuator);
+      impl_->actuators.emplace_back(std::move(actuator));
+    };
+
     const auto addHinge = [&](const std::string &parent, const std::string &child,
                                float x, float y, float z, float minAngle,
                                float maxAngle, float targetAngle, float maxTorque) {
@@ -149,7 +174,7 @@ void JoltBridge::rebuild(Scene &scene) {
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
       addHinge("Torso", prefix + " Hip", x, 2.22f, z, -0.85f, 0.85f, 0.18f * end, 65.0f);
-      addHinge(prefix + " Hip", prefix + " Shin", x, 1.60f, z, -1.45f, 0.15f, -0.70f, 50.0f);
+      addSlider(prefix + " Hip", prefix + " Shin", -0.22f, 0.22f, -0.06f, 1200.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, 0.65f, z, -0.55f, 0.55f, 0.05f, 25.0f);
     }
   }
