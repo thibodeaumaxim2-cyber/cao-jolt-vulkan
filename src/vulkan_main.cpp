@@ -83,6 +83,7 @@ static Mat4 multiply(const Mat4 &a, const Mat4 &b) {
 static Mat4 translate(float x,float y,float z) { Mat4 m=identity(); m.v[12]=x; m.v[13]=y; m.v[14]=z; return m; }
 static Mat4 rotateX(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[5]=c;m.v[6]=sn;m.v[9]=-sn;m.v[10]=c;return m; }
 static Mat4 rotateY(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[0]=c;m.v[2]=-sn;m.v[8]=sn;m.v[10]=c;return m; }
+static Mat4 rotateZ(float a) { Mat4 m=identity(); float c=std::cos(a), sn=std::sin(a); m.v[0]=c;m.v[1]=sn;m.v[4]=-sn;m.v[5]=c;return m; }
 static Mat4 scale(float s) { Mat4 m=identity();m.v[0]=m.v[5]=m.v[10]=s;return m; }
 static Mat4 scale(float x,float y,float z) { Mat4 m=identity();m.v[0]=x;m.v[5]=y;m.v[10]=z;return m; }
 static Mat4 perspective(float fovy,float aspect,float nearPlane,float farPlane) {
@@ -567,7 +568,7 @@ int main() {
         const SceneObject *object = scene.find(draw.objectId);
         if (!object) continue;
         const Transform &t = object->transform;
-        setMvp(multiply(translate(t.position.x, t.position.y, t.position.z), scale(t.scale.x, t.scale.y, t.scale.z)));
+        setMvp(multiply(translate(t.position.x, t.position.y, t.position.z), multiply(rotateZ(t.rotation.z), multiply(rotateY(t.rotation.y), multiply(rotateX(t.rotation.x), scale(t.scale.x, t.scale.y, t.scale.z))))));
         vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush);
         vkCmdDrawIndexed(commands[image], draw.indexCount, 1, draw.firstIndex, 0, 0);
       }
