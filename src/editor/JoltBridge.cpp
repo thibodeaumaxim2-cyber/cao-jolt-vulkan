@@ -8,6 +8,7 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/JobSystem/JobSystemThreadPool.h>
 
+#include <algorithm>
 #include <thread>
 
 struct JoltBridge::Impl {
