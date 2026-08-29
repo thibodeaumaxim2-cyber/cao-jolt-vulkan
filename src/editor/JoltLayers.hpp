@@ -1,0 +1,41 @@
+#pragma once
+
+#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
+#include <Jolt/Physics/Collision/ObjectLayerPairFilter.h>
+#include <Jolt/Physics/Collision/ObjectVsBroadPhaseLayerFilter.h>
+#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterface.h>
+
+namespace CaoObjectLayers {
+static constexpr JPH::ObjectLayer Static = 0;
+static constexpr JPH::ObjectLayer Dynamic = 1;
+static constexpr uint32_t Count = 2;
+}
+
+namespace CaoBroadPhaseLayers {
+static const JPH::BroadPhaseLayer Static{0};
+static const JPH::BroadPhaseLayer Dynamic{1};
+static constexpr uint32_t Count = 2;
+}
+
+class CaoObjectLayerPairFilter final : public JPH::ObjectLayerPairFilter {
+ public:
+  bool ShouldCollide(JPH::ObjectLayer first, JPH::ObjectLayer second) const override {
+    return first == CaoObjectLayers::Dynamic || second == CaoObjectLayers::Dynamic;
+  }
+};
+
+class CaoBroadPhaseLayerInterface final : public JPH::BroadPhaseLayerInterface {
+ public:
+  uint GetNumBroadPhaseLayers() const override { return CaoBroadPhaseLayers::Count; }
+  JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer layer) const override {
+    return layer == CaoObjectLayers::Static ? CaoBroadPhaseLayers::Static : CaoBroadPhaseLayers::Dynamic;
+  }
+};
+
+class CaoObjectVsBroadPhaseFilter final : public JPH::ObjectVsBroadPhaseLayerFilter {
+ public:
+  bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhase) const override {
+    return layer == CaoObjectLayers::Dynamic || broadPhase == CaoBroadPhaseLayers::Dynamic;
+  }
+};
