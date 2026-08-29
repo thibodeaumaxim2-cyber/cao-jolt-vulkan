@@ -471,6 +471,7 @@ int main() {
       if (ImGui::Button("Build")) gBuildRequested = true; ImGui::SameLine();
       if (ImGui::Button("Destroy")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
+      ImGui::TextDisabled("Quadruped design: hip 65 N m | knee 50 N m | ankle 25 N m");
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
