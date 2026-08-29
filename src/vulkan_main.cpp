@@ -406,18 +406,9 @@ int main() {
     imguiInfo.Instance=instance; imguiInfo.PhysicalDevice=gpu; imguiInfo.Device=device;
     imguiInfo.QueueFamily=family; imguiInfo.Queue=queue; imguiInfo.DescriptorPool=imguiPool;
     imguiInfo.MinImageCount=imageCount; imguiInfo.ImageCount=swapImageCount;
-    imguiInfo.MSAASamples=VK_SAMPLE_COUNT_1_BIT;
-    ImGui_ImplVulkan_Init(&imguiInfo, renderPass);
-    VkCommandBufferAllocateInfo fontAllocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    fontAllocate.commandPool=pool; fontAllocate.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; fontAllocate.commandBufferCount=1;
-    VkCommandBuffer fontCommand=VK_NULL_HANDLE; check(vkAllocateCommandBuffers(device,&fontAllocate,&fontCommand),"imgui font command");
-    VkCommandBufferBeginInfo fontBegin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; fontBegin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    check(vkBeginCommandBuffer(fontCommand,&fontBegin),"imgui font begin");
-    ImGui_ImplVulkan_CreateFontsTexture(fontCommand);
-    check(vkEndCommandBuffer(fontCommand),"imgui font end");
-    VkSubmitInfo fontSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; fontSubmit.commandBufferCount=1; fontSubmit.pCommandBuffers=&fontCommand;
-    check(vkQueueSubmit(queue,1,&fontSubmit,VK_NULL_HANDLE),"imgui font submit"); check(vkQueueWaitIdle(queue),"imgui font wait");
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
+    imguiInfo.MSAASamples=VK_SAMPLE_COUNT_1_BIT; imguiInfo.RenderPass=renderPass;
+    ImGui_ImplVulkan_Init(&imguiInfo);
+    ImGui_ImplVulkan_CreateFontsTexture();
     gUiReady = true;
 
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
