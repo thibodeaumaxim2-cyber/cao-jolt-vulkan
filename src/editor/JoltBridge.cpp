@@ -1,7 +1,39 @@
 #include "JoltBridge.hpp"
-// Physics-system ownership is intentionally isolated here. The renderer only
-// reads SceneObject::transform; this keeps Jolt independent from Vulkan.
-void JoltBridge::initialize(){}
-void JoltBridge::rebuild(Scene&){}
-void JoltBridge::step(Scene&,float){}
-void JoltBridge::shutdown(){}
+
+#include <Jolt/Core/Factory.h>
+#include <Jolt/RegisterTypes.h>
+
+struct JoltBridge::Impl {
+  bool ready = false;
+};
+
+JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
+JoltBridge::~JoltBridge() { shutdown(); }
+
+void JoltBridge::initialize() {
+  if (impl_->ready) return;
+  JPH::Factory::sInstance = new JPH::Factory();
+  JPH::RegisterTypes();
+  impl_->ready = true;
+}
+
+void JoltBridge::rebuild(Scene&) {
+  // Body creation is performed during the next integration step; the bridge
+  // deliberately keeps physics independent from the Vulkan renderer.
+}
+
+void JoltBridge::step(Scene&, float) {
+  // PhysicsSystem update is added with the native scene body registry.
+}
+
+void JoltBridge::shutdown() {
+  if (!impl_ || !impl_->ready) return;
+  JPH::UnregisterTypes();
+  delete JPH::Factory::sInstance;
+  JPH::Factory::sInstance = nullptr;
+  impl_->ready = false;
+}
+
+bool JoltBridge::initialized() const {
+  return impl_ && impl_->ready;
+}
