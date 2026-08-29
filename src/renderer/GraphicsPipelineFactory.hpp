@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ColorBlendState.hpp"
+#include "DynamicState.hpp"
+#include "MultisamplingState.hpp"
 #include "PipelineConfig.hpp"
 #include "ShaderLoader.hpp"
 #include <array>
@@ -7,15 +10,14 @@
 #include <vulkan/vulkan.h>
 
 inline VkPipeline createCadGraphicsPipeline(
-    VkDevice device,
-    VkRenderPass renderPass,
-    VkExtent2D extent,
-    VkShaderModule vertexShader,
-    VkShaderModule fragmentShader,
+    VkDevice device, VkRenderPass renderPass, VkExtent2D extent,
+    VkShaderModule vertexShader, VkShaderModule fragmentShader,
     VkPipelineLayout layout) {
   auto stages = std::array<VkPipelineShaderStageCreateInfo, 2>{
-      VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
-      VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}};
+      VkPipelineShaderStageCreateInfo{
+          VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+      VkPipelineShaderStageCreateInfo{
+          VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}};
   stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
   stages[0].module = vertexShader;
   stages[0].pName = "main";
@@ -25,7 +27,7 @@ inline VkPipeline createCadGraphicsPipeline(
 
   auto binding = cadVertexBinding();
   auto attributes = cadVertexAttributes();
-  auto input = cadVertexInputState(&binding, attributes.data());
+  auto input = cadVertexInput(&binding, attributes.data());
   auto assembly = cadInputAssembly();
   auto viewport = makeCadViewport(extent);
   auto scissor = makeCadScissor(extent);
@@ -37,7 +39,7 @@ inline VkPipeline createCadGraphicsPipeline(
   viewportState.pScissors = &scissor;
   auto rasterizer = cadRasterizer();
   auto multisampling = cadMultisampling();
-  auto depth = cadDepthState();
+  auto depth = cadDepthStencil();
   auto blendAttachment = cadColorBlendAttachment();
   auto blend = cadColorBlendState(&blendAttachment);
 
