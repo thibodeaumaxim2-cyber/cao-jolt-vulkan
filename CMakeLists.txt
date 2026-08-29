@@ -105,7 +105,8 @@ add_library(cao-editor-core
 target_include_directories(cao-editor-core PUBLIC src)
 add_library(cao-vulkan-renderer
   src/renderer/VulkanRenderer.cpp
-  src/renderer/ShaderLoader.cpp)
+  src/renderer/ShaderLoader.cpp
+  src/renderer/VulkanResources.cpp)
 target_include_directories(cao-vulkan-renderer PUBLIC src)
 else()
   add_executable(cao-jolt src/main.cpp)
