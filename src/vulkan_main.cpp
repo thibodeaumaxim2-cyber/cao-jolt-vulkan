@@ -504,9 +504,13 @@ int main() {
       constexpr float radiansToDegrees = 57.2957795f;
       ImGui::Text("Tracking error: %.2f deg (%.3f rad) | torque-limited joints: %d/16",
                   maxAngleError * radiansToDegrees, maxAngleError, saturated);
-      ImGui::Text("Support knee target: %.1f deg",
-                  robotTelemetry.targetAnglesRad[0][2] * radiansToDegrees);
-      ImGui::TextDisabled("Walk support geometry: femur/tibia = 90 deg");
+      const float commandedKneeDeg = robotTelemetry.targetAnglesRad[0][2] * radiansToDegrees;
+      const float measuredKneeDeg = robotTelemetry.measuredAnglesRad[0][2] * radiansToDegrees;
+      const float kneeErrorDeg = robotTelemetry.angleErrorRad[0][2] * radiansToDegrees;
+      ImGui::Text("Front-left knee command: %.1f deg", commandedKneeDeg);
+      ImGui::Text("Front-left knee scene:  %.1f deg", measuredKneeDeg);
+      ImGui::Text("Front-left knee error:   %.1f deg", kneeErrorDeg);
+      ImGui::TextDisabled("Scene values are measured from Jolt body transforms.");
       if (robotTelemetry.activeSwingLeg >= 0)
         ImGui::Text("Swing assist: %.1f N", robotTelemetry.swingLiftForceN);
       if (ImGui::Button("Export robot JSON"))
