@@ -105,7 +105,7 @@ void JoltBridge::rebuild(Scene &scene) {
                    object.transform.position.z),
         JPH::Quat::sIdentity(), motion,
         object.dynamic
-            ? (scene.isQuadruped() && object.name != "Torso"
+            ? (scene.isQuadruped()
                 ? CaoObjectLayers::RobotLink : CaoObjectLayers::Dynamic)
             : CaoObjectLayers::Static);
     // Feet are the contact pads. High tangential traction limits sliding
