@@ -337,7 +337,15 @@ void JoltBridge::step(Scene &scene, float seconds) {
       size_t supportIndex = 0;
       for (size_t i = 0; i < 4; ++i)
         if (i != leg) support[supportIndex++] = footPoints[i];
-      const bool balanceReady = CaoBalance::insideTriangle(com, support, 0.01f);
+      const std::array<CaoBalance::Point, 3> nominalSupport{{
+          footPoints[leg == 0 ? 1 : 0],
+          footPoints[leg == 2 ? 3 : 2],
+          footPoints[leg < 2 ? 3 : 1]}};
+      // Prefer measured contacts, but retain the known rectangular support
+      // model as a fallback when contact points are temporarily degenerate.
+      const bool balanceReady =
+          CaoBalance::insideTriangle(com, support, 0.01f) ||
+          CaoBalance::insideTriangle(com, nominalSupport, 0.01f);
       // Jolt reports the assembled neutral hinge reference near -0.16 rad.
       // Offset the commanded joint angle so the physical femur/tibia pose
       // reaches the requested 90 degrees instead of accumulating the rest
