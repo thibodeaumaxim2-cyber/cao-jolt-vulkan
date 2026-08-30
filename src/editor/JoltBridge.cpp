@@ -310,20 +310,28 @@ void JoltBridge::step(Scene &scene, float seconds) {
   // Safety guard for the experimental crawl drive: never let an accumulated
   // contact impulse turn the robot into a projectile.
   if (impl_->script == 1 && !impl_->torso.IsInvalid()) {
-    auto &bodyInterface = impl_->physics->GetBodyInterface();
-    JPH::BodyLockWrite torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
-    if (torsoLock.Succeeded()) {
-      JPH::Body &torsoBody = torsoLock.GetBody();
-      JPH::Vec3 velocity = torsoBody.GetLinearVelocity();
-      const float horizontalSpeed = std::sqrt(velocity.GetX() * velocity.GetX() + velocity.GetZ() * velocity.GetZ());
-      if (horizontalSpeed > 1.25f) {
-        const float factor = 1.25f / horizontalSpeed;
-        velocity.SetX(velocity.GetX() * factor);
-        velocity.SetZ(velocity.GetZ() * factor);
+    JPH::Vec3 safeVelocity = JPH::Vec3::sZero();
+    bool limitVelocity = false;
+    {
+      JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
+      if (torsoLock.Succeeded()) {
+        safeVelocity = torsoLock.GetBody().GetLinearVelocity();
+        const float horizontalSpeed = std::sqrt(safeVelocity.GetX() * safeVelocity.GetX() + safeVelocity.GetZ() * safeVelocity.GetZ());
+        if (horizontalSpeed > 1.25f) {
+          const float factor = 1.25f / horizontalSpeed;
+          safeVelocity.SetX(safeVelocity.GetX() * factor);
+          safeVelocity.SetZ(safeVelocity.GetZ() * factor);
+          limitVelocity = true;
+        }
+        const float clampedY = std::clamp(safeVelocity.GetY(), -2.0f, 1.0f);
+        if (clampedY != safeVelocity.GetY()) {
+          safeVelocity.SetY(clampedY);
+          limitVelocity = true;
+        }
       }
-      velocity.SetY(std::clamp(velocity.GetY(), -2.0f, 1.0f));
-      bodyInterface.SetLinearVelocity(impl_->torso, velocity);
     }
+    if (limitVelocity)
+      impl_->physics->GetBodyInterface().SetLinearVelocity(impl_->torso, safeVelocity);
   }
 
   // Read the actual Jolt hinge state and estimate motor demand from the
