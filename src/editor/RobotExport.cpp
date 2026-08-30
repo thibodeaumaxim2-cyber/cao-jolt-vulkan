@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <algorithm>
 #include <string>
 
 using nlohmann::json;
