@@ -232,7 +232,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
       const float side = leg < 2 ? -1.0f : 1.0f;
-      float roll = 0.0f, hip = 0.0f, knee = -0.48f, ankle = 0.0f;
+      constexpr float rightAngleKnee = -1.5707963f;
+      float roll = 0.0f, hip = 0.0f, knee = rightAngleKnee, ankle = 0.0f;
       float swingLiftForceN = 0.0f;
       int state = 0;
       bool planted = cycle < (impl_->script == 1 ? 0.72f : 0.66f) || cycle >= (impl_->script == 1 ? 0.98f : 0.96f);
@@ -257,7 +258,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = impl_->script == 1 ? 0.08f * t : -0.19f + 0.43f * t;
-        knee = -0.48f - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
+        knee = rightAngleKnee - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
@@ -278,7 +279,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         state = 3;
         const float t = (cycle - (impl_->script == 1 ? 0.98f : 0.96f)) / (impl_->script == 1 ? 0.02f : 0.04f);
         hip = impl_->script == 1 ? 0.0f : 0.24f - 0.06f * t;
-        knee = impl_->script == 1 ? -0.48f : -0.48f - 0.18f * (1.0f - t);
+        knee = impl_->script == 1 ? rightAngleKnee : rightAngleKnee - 0.18f * (1.0f - t);
         ankle = impl_->script == 1 ? 0.0f : 0.05f * (1.0f - t);
       }
       setLegPose(leg, roll, hip, knee, ankle);
