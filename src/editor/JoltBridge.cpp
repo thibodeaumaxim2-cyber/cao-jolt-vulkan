@@ -307,6 +307,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
     constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
     const float cycleDuration = impl_->script == 1 ? 3.20f : 1.05f;
+    const size_t scheduledSwingLeg = static_cast<size_t>(std::fmod(
+        impl_->scriptTime / cycleDuration * 4.0f, 4.0f));
     auto &bodyInterface = impl_->physics->GetBodyInterface();
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
@@ -376,7 +378,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
         hip = impl_->script == 1 ? supportHip + comHipCorrection : -0.24f + 0.05f * t;
         if (impl_->script == 1) roll = comRollCorrection;
         roll = impl_->script == 1 ? 0.0f : side * 0.12f;
-      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f) && balanceReady) { // lift only with three-leg support
+      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f) &&
+                 balanceReady && leg == scheduledSwingLeg) { // one leg only
         state = 2;
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
