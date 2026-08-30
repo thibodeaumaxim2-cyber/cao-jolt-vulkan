@@ -152,10 +152,6 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mHingeAxis1 = settings.mHingeAxis2 = axis;
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
-      // Adjacent links physically overlap at the hinge anchor. Their own
-      // collision would block the actuator before the joint can articulate;
-      // keep collisions with the floor and all non-connected bodies enabled.
-      settings.mCollisionEnabled = false;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
       settings.mMotorSettings.mSpringSettings.mFrequency = 10.0f;
       settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
