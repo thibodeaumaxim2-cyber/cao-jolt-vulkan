@@ -144,7 +144,7 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
-      settings.mMotorSettings.mSpringSettings.mFrequency = 9.0f;
+      settings.mMotorSettings.mSpringSettings.mFrequency = 18.0f;
       settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
@@ -160,13 +160,13 @@ void JoltBridge::rebuild(Scene &scene) {
       const float x = 0.64f * side, z = 0.30f * end;
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
       addHinge("Torso", prefix + " Hip Roll", x, 2.22f, z, JPH::Vec3::sAxisX(),
-               -0.35f, 0.35f, 0.0f, 45.0f);
+               -0.35f, 0.35f, 0.0f, 100.0f);
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, 2.11f, z, JPH::Vec3::sAxisZ(),
-               -0.75f, 0.75f, 0.0f, 80.0f);
+               -0.75f, 0.75f, 0.0f, 180.0f);
       addHinge(prefix + " Hip", prefix + " Shin", x, 1.41f, z, JPH::Vec3::sAxisZ(),
-               -1.30f, 0.15f, -0.35f, 70.0f);
+               -1.30f, 0.15f, -0.35f, 160.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisZ(),
-               -0.55f, 0.55f, 0.0f, 35.0f);
+               -0.55f, 0.55f, 0.0f, 80.0f);
     }
   }
 }
@@ -224,7 +224,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (size_t leg = 0; leg < 4; ++leg)
       setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
-  impl_->physics->Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
+  impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
 
   const auto &lockInterface = impl_->physics->GetBodyLockInterface();
   for (SceneObject &object : scene.objects()) {
