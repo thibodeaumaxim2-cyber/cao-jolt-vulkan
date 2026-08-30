@@ -114,14 +114,14 @@ void JoltBridge::rebuild(Scene &scene) {
     // while the torso and links remain free to move.
     settings.mFriction = object.name.find("Foot") != std::string::npos ? 1.35f : 0.58f;
     settings.mRestitution = 0.0f;
-    // SI mass model for the 20 kg quadruped: 12 kg torso, 1.2 kg thighs,
-    // 0.8 kg shins and 0.25 kg feet. Jolt calculates matching inertia.
+    // Lightweight prototype mass model: every robot-link mass is reduced 10x
+    // to improve controller authority while preserving the same geometry.
     float massKg = 1.0f;
-    if (object.name == "Torso") massKg = 12.0f;
-    else if (object.name.find("Hip Roll") != std::string::npos) massKg = 0.30f;
-    else if (object.name.find("Hip") != std::string::npos) massKg = 1.20f;
-    else if (object.name.find("Shin") != std::string::npos) massKg = 0.80f;
-    else if (object.name.find("Foot") != std::string::npos) massKg = 0.25f;
+    if (object.name == "Torso") massKg = 1.20f;
+    else if (object.name.find("Hip Roll") != std::string::npos) massKg = 0.03f;
+    else if (object.name.find("Hip") != std::string::npos) massKg = 0.12f;
+    else if (object.name.find("Shin") != std::string::npos) massKg = 0.08f;
+    else if (object.name.find("Foot") != std::string::npos) massKg = 0.025f;
     if (object.dynamic) {
       settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
       settings.mMassPropertiesOverride.mMass = massKg;
