@@ -259,7 +259,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
             const JPH::Body &footBody = footLock.GetBody();
             const float footY = static_cast<float>(footBody.GetPosition().GetY());
             const float footVy = footBody.GetLinearVelocity().GetY();
-            swingLiftForceN = std::clamp((0.18f - footY) * 50.0f - footVy * 1.5f, 0.0f, 4.0f) * lift;
+            if (footY < 0.20f && footVy < 0.45f)
+              swingLiftForceN = std::clamp((0.20f - footY) * 42.0f - footVy * 3.5f, 0.0f, 8.0f) * lift;
           }
         }
         planted = false;
