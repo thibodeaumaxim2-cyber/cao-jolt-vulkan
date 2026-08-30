@@ -481,13 +481,23 @@ int main() {
       if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
-      ImGui::TextDisabled("Quadruped: 16 rotary actuators | hip roll 45 N m | hip/knee 80/70 N m | ankle 35 N m");
+      ImGui::TextDisabled("Quadruped: 16 rotary actuators | roll/pitch/knee/ankle: 55/85/75/35 N m");
       const char *robotScripts[] = {"Stand", "Walk", "Trot", "Jump"};
       if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts))) {
         physics.setRobotScript(gRobotScript);
         gSimulationRunning = gRobotScript != 0;
       }
       ImGui::Text("Active script: %s", robotScripts[gRobotScript]);
+      const RobotTelemetry &robotTelemetry = physics.telemetry();
+      ImGui::Separator();
+      ImGui::Text("Telemetry | torso %.3f m/s | cycle %.2f | swing leg %d",
+                  robotTelemetry.torsoSpeedMps, robotTelemetry.gaitCycle,
+                  robotTelemetry.activeSwingLeg);
+      ImGui::Text("Limits N m: roll %.0f | hip %.0f | knee %.0f | ankle %.0f",
+                  robotTelemetry.torqueLimitsNm[0], robotTelemetry.torqueLimitsNm[1],
+                  robotTelemetry.torqueLimitsNm[2], robotTelemetry.torqueLimitsNm[3]);
+      if (robotTelemetry.activeSwingLeg >= 0)
+        ImGui::Text("Swing assist: %.1f N", robotTelemetry.swingLiftForceN);
       if (ImGui::Button("Export robot JSON"))
         gRobotParametersExported = exportRobotParameters(scene, gRobotScript, "robot_parameters.json");
       if (gRobotParametersExported) ImGui::SameLine(), ImGui::TextDisabled("saved robot_parameters.json");
@@ -568,7 +578,7 @@ int main() {
       if (gSimulationRunning) {
         constexpr float simulationDeltaSeconds = 1.0f / 60.0f;
         physics.step(scene, simulationDeltaSeconds);
-        frameRecorder.capture(scene, simulationDeltaSeconds);
+        frameRecorder.capture(scene, simulationDeltaSeconds, physics.telemetry());
       }
       if (frameRecorder.complete() && !frameRecordingWriteAttempted) {
         frameRecordingSaved = frameRecorder.write("robot_recording.json");
