@@ -113,7 +113,8 @@ if(CAO_RENDERER STREQUAL "VULKAN")
     src/editor/Scene.cpp
     src/editor/Picking.cpp
     src/editor/JoltBridge.cpp
-    src/editor/UiController.cpp)
+    src/editor/UiController.cpp
+    src/editor/RobotExport.cpp)
   target_include_directories(cao-editor-core PUBLIC src)
   add_library(cao-vulkan-renderer
     src/renderer/VulkanRenderer.cpp
@@ -133,7 +134,7 @@ endif()
 
 if(CAO_RENDERER STREQUAL "VULKAN")
   target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_VULKAN=1)
-  target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt)
+  target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt nlohmann_json::nlohmann_json)
   target_link_libraries(cao-vulkan-renderer PUBLIC Vulkan::Vulkan cao-editor-core)
   target_link_libraries(cao-jolt PRIVATE Vulkan::Vulkan ${CAO_GLFW_TARGET}
     nlohmann_json::nlohmann_json Jolt::Jolt cao-editor-core cao-vulkan-renderer cao-imgui)
