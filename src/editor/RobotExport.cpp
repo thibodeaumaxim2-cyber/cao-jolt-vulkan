@@ -19,6 +19,7 @@ static const char *primitiveName(Primitive p) {
 
 static float massFor(const SceneObject &object) {
   if (object.name == "Torso") return 12.0f;
+  if (object.name.find("Hip Roll") != std::string::npos) return 0.30f;
   if (object.name.find("Hip") != std::string::npos) return 1.20f;
   if (object.name.find("Shin") != std::string::npos) return 0.80f;
   if (object.name.find("Foot") != std::string::npos) return 0.25f;
@@ -39,10 +40,12 @@ bool exportRobotParameters(const Scene &scene, int motionScript,
                          {"jolt_collision_steps", 1}};
   root["robot"] = {{"name", "Quadruped"},
                    {"total_design_mass_kg", 20.0},
+                   {"actuator_count", 16},
                    {"actuators", {
-                     {"hip", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.85, 0.85}}, {"max_torque_Nm", 65.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}},
-                     {"linear_knee", {{"type", "prismatic"}, {"count", 4}, {"stroke_limits_m", {-0.22, 0.22}}, {"target_m", -0.06}, {"max_force_N", 1200.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 0.32}}},
-                     {"ankle", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.55, 0.55}}, {"max_torque_Nm", 25.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}}
+                     {"hip_roll", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.35, 0.35}}, {"max_torque_Nm", 45.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}},
+                     {"hip_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.75, 0.75}}, {"max_torque_Nm", 80.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}},
+                     {"knee_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-1.30, 0.15}}, {"max_torque_Nm", 70.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}},
+                     {"ankle_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.55, 0.55}}, {"max_torque_Nm", 35.0}, {"servo_frequency_hz", 9.0}, {"damping_ratio", 1.0}}}
                    }}};
   root["links"] = json::array();
   for (const SceneObject &object : scene.objects()) {
