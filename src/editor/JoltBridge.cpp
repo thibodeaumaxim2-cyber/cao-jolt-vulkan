@@ -32,6 +32,7 @@ struct JoltBridge::Impl {
   int script = 0;
   float scriptTime = 0.0f;
   JPH::BodyID ground;
+  JPH::BodyID torso;
   std::array<JPH::BodyID, 4> feet{};
   std::array<JPH::BodyID, 4> shins{};
   RobotTelemetry telemetry;
@@ -71,6 +72,7 @@ void JoltBridge::rebuild(Scene &scene) {
   impl_->bodies.clear();
   impl_->feet.fill(JPH::BodyID());
   impl_->shins.fill(JPH::BodyID());
+  impl_->torso = JPH::BodyID();
 
   if (!impl_->ground.IsInvalid()) {
     bodies.RemoveBody(impl_->ground);
@@ -123,6 +125,7 @@ void JoltBridge::rebuild(Scene &scene) {
         settings, object.dynamic ? JPH::EActivation::Activate
                                  : JPH::EActivation::DontActivate);
     impl_->bodies.emplace(object.id, body);
+    if (object.name == "Torso") impl_->torso = body;
     object.joltBody = body.GetIndexAndSequenceNumber();
   }
 
@@ -232,7 +235,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       float roll = 0.0f, hip = 0.0f, knee = -0.48f, ankle = 0.0f;
       float swingLiftForceN = 0.0f;
       int state = 0;
-      bool planted = cycle < 0.66f || cycle >= 0.96f;
+      bool planted = cycle < (impl_->script == 1 ? 0.72f : 0.66f) || cycle >= (impl_->script == 1 ? 0.98f : 0.96f);
       if (cycle < (impl_->script == 1 ? 0.72f : 0.58f)) { // crawl stance: three legs support the body
         const float t = cycle / (impl_->script == 1 ? 0.72f : 0.58f);
         hip = 0.18f - 0.42f * t;
@@ -259,8 +262,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
             const JPH::Body &footBody = footLock.GetBody();
             const float footY = static_cast<float>(footBody.GetPosition().GetY());
             const float footVy = footBody.GetLinearVelocity().GetY();
-            if (footY < 0.20f && footVy < 0.45f)
-              swingLiftForceN = std::clamp((0.20f - footY) * 42.0f - footVy * 3.5f, 0.0f, 8.0f) * lift;
+            if (footY < 0.24f && footVy < 0.55f)
+              swingLiftForceN = std::clamp((0.24f - footY) * 48.0f - footVy * 4.0f, 0.0f, 12.0f) * lift;
           }
         }
         planted = false;
@@ -281,6 +284,13 @@ void JoltBridge::step(Scene &scene, float seconds) {
       }
       if (!impl_->feet[leg].IsInvalid())
         bodyInterface.SetFriction(impl_->feet[leg], planted ? 1.35f : 0.08f);
+      // During crawl stance, a bounded body force supplies the horizontal
+      // ground reaction that joint targets alone cannot create. It is applied
+      // only while this leg is planted, so three legs share propulsion.
+      if (impl_->script == 1 && planted && !impl_->torso.IsInvalid()) {
+        const float stanceDriveN = cycle < 0.58f ? 18.0f : 8.0f;
+        bodyInterface.AddForce(impl_->torso, JPH::Vec3(0.0f, 0.0f, stanceDriveN));
+      }
       if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
           !impl_->shins[leg].IsInvalid()) {
         const JPH::Vec3 liftForce(0.0f, swingLiftForceN, 0.0f);
