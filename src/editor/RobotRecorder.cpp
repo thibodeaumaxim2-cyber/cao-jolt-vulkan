@@ -14,7 +14,7 @@ void RobotFrameRecorder::start(int motionScript) {
   frames_ = nlohmann::json::array();
 }
 
-void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds) {
+void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const RobotTelemetry &telemetry) {
   if (!recording_) return;
 
   nlohmann::json links = nlohmann::json::array();
@@ -28,7 +28,22 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds) {
         {"scale_m", {object.transform.scale.x, object.transform.scale.y, object.transform.scale.z}}
     });
   }
-  frames_.push_back({{"time_s", std::min(elapsedSeconds_, durationSeconds_)}, {"links", std::move(links)}});
+  frames_.push_back({
+      {"time_s", std::min(elapsedSeconds_, durationSeconds_)},
+      {"links", std::move(links)},
+      {"telemetry", {
+          {"motion_script", telemetry.motionScript},
+          {"active_swing_leg", telemetry.activeSwingLeg},
+          {"gait_cycle", telemetry.gaitCycle},
+          {"torso_speed_mps", telemetry.torsoSpeedMps},
+          {"swing_lift_force_N", telemetry.swingLiftForceN},
+          {"leg_state", telemetry.legState},
+          {"target_angles_rad", telemetry.targetAnglesRad},
+          {"lift_assist_force_N", telemetry.liftAssistForceN},
+          {"foot_friction", telemetry.footFriction},
+          {"torque_limits_Nm", telemetry.torqueLimitsNm}
+      }}
+  });
 
   elapsedSeconds_ += std::max(0.0f, deltaSeconds);
   if (elapsedSeconds_ >= durationSeconds_) {
