@@ -2,12 +2,18 @@
 
 #include <algorithm>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 RobotFrameRecorder::RobotFrameRecorder(float durationSeconds)
     : durationSeconds_(std::max(0.1f, durationSeconds)) {}
 
 void RobotFrameRecorder::start(int motionScript) {
   motionScript_ = motionScript;
+  const auto now = std::chrono::system_clock::now();
+  const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+  runId_ = std::to_string(stamp);
   elapsedSeconds_ = 0.0f;
   recording_ = true;
   complete_ = false;
@@ -45,7 +51,6 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
           {"lift_assist_force_N", telemetry.liftAssistForceN},
           {"foot_friction", telemetry.footFriction},
           {"swing_lift_force_N", telemetry.swingLiftForceN},
-          {"leg_state", telemetry.legState},
           {"leg_state", telemetry.legState}
       }}
   });
@@ -65,6 +70,7 @@ bool RobotFrameRecorder::write(const std::filesystem::path &path) const {
       {"format_version", 1},
       {"units", {{"position", "m"}, {"rotation", "rad"}, {"time", "s"}}},
       {"capture", {
+          {"run_id", runId_},
           {"duration_seconds", durationSeconds_},
           {"sample_rate_hz", 60},
           {"motion_script", motionScript_},
