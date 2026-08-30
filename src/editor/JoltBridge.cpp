@@ -427,6 +427,15 @@ void JoltBridge::step(Scene &scene, float seconds) {
         bodyInterface.AddForce(impl_->feet[leg], liftForce);
         bodyInterface.AddForce(impl_->shins[leg], -liftForce);
       }
+
+      // A planted foot pushes against the floor to propel the body. The force
+      // is applied to the contact body, allowing ground friction and the Jolt
+      // constraints to transmit the reaction through the leg chain.
+      if (impl_->script == 1 && planted && !impl_->feet[leg].IsInvalid()) {
+        constexpr float stancePushForceN = 0.45f;
+        bodyInterface.AddForce(impl_->feet[leg],
+                               JPH::Vec3(0.0f, 0.0f, -stancePushForceN));
+      }
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
