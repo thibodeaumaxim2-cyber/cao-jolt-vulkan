@@ -114,7 +114,8 @@ if(CAO_RENDERER STREQUAL "VULKAN")
     src/editor/Picking.cpp
     src/editor/JoltBridge.cpp
     src/editor/UiController.cpp
-    src/editor/RobotExport.cpp)
+    src/editor/RobotExport.cpp
+    src/editor/RobotRecorder.cpp)
   target_include_directories(cao-editor-core PUBLIC src)
   add_library(cao-vulkan-renderer
     src/renderer/VulkanRenderer.cpp
