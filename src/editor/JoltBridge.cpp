@@ -438,7 +438,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       // is applied to the contact body, allowing ground friction and the Jolt
       // constraints to transmit the reaction through the leg chain.
       if (impl_->script == 1 && planted && !impl_->feet[leg].IsInvalid()) {
-        constexpr float stancePushForceN = 0.08f;
+        constexpr float stancePushForceN = 0.01f;
         bodyInterface.AddForce(impl_->feet[leg],
                                JPH::Vec3(0.0f, 0.0f, -stancePushForceN));
       }
