@@ -237,10 +237,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.torqueLimitsNm = {{CaoLegGeometry::hipRollTorqueNm, CaoLegGeometry::hipPitchTorqueNm, CaoLegGeometry::kneePitchTorqueNm, CaoLegGeometry::anklePitchTorqueNm}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   // Calibrated Jolt command corresponding to a physical 90-degree knee.
-  const CaoLegGeometry::PlanarIK standingIK = CaoLegGeometry::solvePlanar(
-      CaoLegGeometry::torsoHipHeight - CaoLegGeometry::ankleHeight, 0.0f);
-  // Standing is mechanically straight: remove the solver's tiny reach
-  // epsilon so the commanded neutral pose is exactly hip=0, knee=0.
+  // Standing is mechanically straight: use the neutral hinge pose exactly.
   const float supportHip = 0.0f;
   const float supportKnee = 0.0f;
   // Lightweight centroid-based whole-body correction. The support target
