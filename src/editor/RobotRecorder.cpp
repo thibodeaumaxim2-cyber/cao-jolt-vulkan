@@ -42,10 +42,7 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
           {"foot_friction", telemetry.footFriction},
           {"swing_lift_force_N", telemetry.swingLiftForceN},
           {"leg_state", telemetry.legState},
-          {"target_angles_rad", telemetry.targetAnglesRad},
-          {"lift_assist_force_N", telemetry.liftAssistForceN},
-          {"foot_friction", telemetry.footFriction},
-          {"torque_limits_Nm", telemetry.torqueLimitsNm}
+          {"leg_state", telemetry.legState}
       }}
   });
 
