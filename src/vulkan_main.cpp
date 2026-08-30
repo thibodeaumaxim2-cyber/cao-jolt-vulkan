@@ -7,6 +7,7 @@
 #include "editor/JoltBridge.hpp"
 #include "editor/Scene.hpp"
 #include "editor/RobotExport.hpp"
+#include "editor/RobotRecorder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -149,6 +150,10 @@ int main() {
     Scene scene;
     scene.buildQuadruped();
     physics.rebuild(scene);
+    RobotFrameRecorder frameRecorder{5.0f};
+    bool simulationWasRunning = false;
+    bool frameRecordingSaved = false;
+    bool frameRecordingWriteAttempted = false;
     glfwSetCursorPosCallback(window, cursor);
     glfwSetMouseButtonCallback(window, mouseButton);
     glfwSetScrollCallback(window, scroll);
@@ -486,6 +491,10 @@ int main() {
       if (ImGui::Button("Export robot JSON"))
         gRobotParametersExported = exportRobotParameters(scene, gRobotScript, "robot_parameters.json");
       if (gRobotParametersExported) ImGui::SameLine(), ImGui::TextDisabled("saved robot_parameters.json");
+      if (frameRecorder.recording())
+        ImGui::Text("Recording frames: %.1f / %.1f s", frameRecorder.elapsedSeconds(), frameRecorder.durationSeconds());
+      else if (frameRecordingSaved)
+        ImGui::TextDisabled("saved robot_recording.json");
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
@@ -551,7 +560,21 @@ int main() {
       if (gDemoRequested) {
         scene.buildQuadruped(); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
       }
-      if (gSimulationRunning) physics.step(scene, 1.0f / 60.0f);
+      if (gSimulationRunning && !simulationWasRunning) {
+        frameRecorder.start(gRobotScript);
+        frameRecordingSaved = false;
+        frameRecordingWriteAttempted = false;
+      }
+      if (gSimulationRunning) {
+        constexpr float simulationDeltaSeconds = 1.0f / 60.0f;
+        physics.step(scene, simulationDeltaSeconds);
+        frameRecorder.capture(scene, simulationDeltaSeconds);
+      }
+      if (frameRecorder.complete() && !frameRecordingWriteAttempted) {
+        frameRecordingSaved = frameRecorder.write("robot_recording.json");
+        frameRecordingWriteAttempted = true;
+      }
+      simulationWasRunning = gSimulationRunning;
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
       glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
