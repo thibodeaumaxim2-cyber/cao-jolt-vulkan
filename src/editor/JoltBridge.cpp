@@ -358,8 +358,29 @@ void JoltBridge::step(Scene &scene, float seconds) {
       ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 4, impl_->allocator.get(), impl_->jobs.get());
 
-  // No velocity teleportation: gravity, contact impulses, and actuator
-  // torque are allowed to determine whether the robot can really stand.
+  // Active torso stabilization: use the measured Jolt attitude and angular
+  // velocity to apply a bounded physical recovery torque. This is enabled
+  // only for Stand/Walk and does not teleport or overwrite body state.
+  if ((impl_->script == 0 || impl_->script == 1) && !impl_->torso.IsInvalid()) {
+    JPH::Vec3 correctiveTorque = JPH::Vec3::sZero();
+    {
+      JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
+      if (torsoLock.Succeeded()) {
+        const JPH::Body &body = torsoLock.GetBody();
+        const JPH::Quat q = body.GetRotation();
+        const float roll = std::atan2(2.0f * (q.GetW()*q.GetX() + q.GetY()*q.GetZ()),
+                                      1.0f - 2.0f * (q.GetX()*q.GetX() + q.GetY()*q.GetY()));
+        const float pitch = std::asin(std::clamp(2.0f * (q.GetW()*q.GetY() - q.GetZ()*q.GetX()), -1.0f, 1.0f));
+        const JPH::Vec3 angularVelocity = body.GetAngularVelocity();
+        correctiveTorque = JPH::Vec3(
+            std::clamp(-pitch * 180.0f - angularVelocity.GetX() * 22.0f, -90.0f, 90.0f),
+            0.0f,
+            std::clamp(-roll * 180.0f - angularVelocity.GetZ() * 22.0f, -90.0f, 90.0f));
+      }
+    }
+    if (correctiveTorque.LengthSq() > 0.001f)
+      impl_->physics->GetBodyInterface().AddTorque(impl_->torso, correctiveTorque);
+  }
 
   // Safety guard for the experimental crawl drive: never let an accumulated
   // contact impulse turn the robot into a projectile.
