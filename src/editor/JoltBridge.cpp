@@ -158,7 +158,7 @@ void JoltBridge::rebuild(Scene &scene) {
       impl_->actuators.emplace_back(std::move(actuator));
     };
     size_t leg = 0;
-    for (int side : {-1, 1}) for (int end : {-1, 1}, ++leg) {
+    for (int side : {-1, 1}) for (int end : {-1, 1}) {
       const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
@@ -172,6 +172,7 @@ void JoltBridge::rebuild(Scene &scene) {
                -1.30f, 0.15f, -0.35f, 75.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisX(),
                -0.55f, 0.55f, 0.0f, 35.0f);
+      ++leg;
     }
   }
 }
