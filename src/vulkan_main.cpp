@@ -496,6 +496,13 @@ int main() {
       ImGui::Text("Limits N m: roll %.0f | hip %.0f | knee %.0f | ankle %.0f",
                   robotTelemetry.torqueLimitsNm[0], robotTelemetry.torqueLimitsNm[1],
                   robotTelemetry.torqueLimitsNm[2], robotTelemetry.torqueLimitsNm[3]);
+      float maxAngleError = 0.0f; int saturated = 0;
+      for (size_t leg = 0; leg < 4; ++leg)
+        for (size_t joint = 0; joint < 4; ++joint)
+          maxAngleError = std::max(maxAngleError, std::abs(robotTelemetry.angleErrorRad[leg][joint]));
+      for (bool value : robotTelemetry.torqueSaturated) if (value) ++saturated;
+      ImGui::Text("Tracking error: %.3f rad | torque-limited joints: %d/16",
+                  maxAngleError, saturated);
       if (robotTelemetry.activeSwingLeg >= 0)
         ImGui::Text("Swing assist: %.1f N", robotTelemetry.swingLiftForceN);
       if (ImGui::Button("Export robot JSON"))
