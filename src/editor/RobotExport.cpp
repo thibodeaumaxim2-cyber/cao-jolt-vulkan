@@ -41,7 +41,7 @@ bool exportRobotParameters(const Scene &scene, int motionScript,
   root["robot"] = {{"name", "Quadruped"},
                    {"total_design_mass_kg", 20.0},
                    {"actuator_count", 16},
-                   {"swing_lift_assist", {{"type", "balanced_internal_force"}, {"max_force_N", 18.0}, {"applies_during", "lift_swing"}, {"force_pair", "foot_up_shin_down"}, {"controller", "bounded_pd"}, {"clearance_target_m", 0.18}, {"max_force_N", 4.0}}},
+                   {"swing_lift_assist", {{"type", "balanced_internal_force"}, {"max_force_N", 18.0}, {"applies_during", "lift_swing"}, {"force_pair", "foot_up_shin_down"}, {"controller", "bounded_pd"}, {"clearance_target_m", 0.20}, {"max_force_N", 8.0}, {"max_upward_velocity_mps", 0.45}}},
                    {"actuators", {
                      {"hip_roll", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.35, 0.35}}, {"max_torque_Nm", 55.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
                      {"hip_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.75, 0.75}}, {"max_torque_Nm", 85.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
