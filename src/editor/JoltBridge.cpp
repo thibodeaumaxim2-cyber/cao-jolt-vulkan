@@ -214,6 +214,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
   impl_->telemetry.torqueLimitsNm = {{55.0f, 85.0f, 75.0f, 35.0f}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
+  // Calibrated Jolt command corresponding to a physical 90-degree knee.
+  constexpr float supportKnee = -1.4107963f;
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
@@ -223,7 +225,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->telemetry.targetAnglesRad[leg] = {{roll, hip, knee, ankle}};
   };
   if (impl_->script == 0) { // Stand
-    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.48f, 0.0f);
+    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, supportKnee, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
     // The offsets produce a four-beat walk or diagonal-pair trot.
@@ -239,8 +241,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       // Offset the commanded joint angle so the physical femur/tibia pose
       // reaches the requested 90 degrees instead of accumulating the rest
       // pose offset as tracking error.
-      constexpr float rightAngleKnee = -1.4107963f;
-      float roll = 0.0f, hip = 0.0f, knee = rightAngleKnee, ankle = 0.0f;
+      float roll = 0.0f, hip = 0.0f, knee = supportKnee, ankle = 0.0f;
       float swingLiftForceN = 0.0f;
       int state = 0;
       bool planted = cycle < (impl_->script == 1 ? 0.72f : 0.66f) || cycle >= (impl_->script == 1 ? 0.98f : 0.96f);
@@ -265,7 +266,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = impl_->script == 1 ? 0.08f * t : -0.19f + 0.43f * t;
-        knee = rightAngleKnee - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
+        knee = supportKnee - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
@@ -286,7 +287,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         state = 3;
         const float t = (cycle - (impl_->script == 1 ? 0.98f : 0.96f)) / (impl_->script == 1 ? 0.02f : 0.04f);
         hip = impl_->script == 1 ? 0.0f : 0.24f - 0.06f * t;
-        knee = impl_->script == 1 ? rightAngleKnee : rightAngleKnee - 0.18f * (1.0f - t);
+        knee = impl_->script == 1 ? supportKnee : supportKnee - 0.18f * (1.0f - t);
         ankle = impl_->script == 1 ? 0.0f : 0.05f * (1.0f - t);
       }
       setLegPose(leg, roll, hip, knee, ankle);
