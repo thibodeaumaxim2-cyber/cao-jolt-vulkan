@@ -293,7 +293,13 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->telemetry.targetAnglesRad[leg] = target;
   };
   if (impl_->script == 0) { // Stand
-    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, comRollCorrection, supportHip + comHipCorrection, supportKnee, 0.0f);
+    // Preserve the visually straight neutral pose. Balance corrections are
+    // deliberately small so stabilization does not become a crouch.
+    const float standHipCorrection = std::clamp(comHipCorrection * 0.35f, -0.07f, 0.07f);
+    const float standRollCorrection = std::clamp(comRollCorrection * 0.35f, -0.05f, 0.05f);
+    for (size_t leg = 0; leg < 4; ++leg)
+      setLegPose(leg, standRollCorrection, supportHip + standHipCorrection,
+                 supportKnee, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
     // The offsets produce a four-beat walk or diagonal-pair trot.
