@@ -480,6 +480,7 @@ int main() {
         physics.setRobotScript(gRobotScript);
         gSimulationRunning = gRobotScript != 0;
       }
+      ImGui::Text("Active script: %s", robotScripts[gRobotScript]);
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
