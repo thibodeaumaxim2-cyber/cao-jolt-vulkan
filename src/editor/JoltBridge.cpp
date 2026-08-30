@@ -160,10 +160,10 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
       settings.mMotorSettings.mSpringSettings.mFrequency =
           maxTorque >= CaoLegGeometry::hipPitchTorqueNm
-              ? CaoLegGeometry::hipPitchMotorFrequencyHz : 10.0f;
+              ? impl_->tuning.motorFrequencyHz : 10.0f;
       settings.mMotorSettings.mSpringSettings.mDamping =
           maxTorque >= CaoLegGeometry::hipPitchTorqueNm
-              ? CaoLegGeometry::hipPitchMotorDamping : 1.0f;
+              ? impl_->tuning.motorDamping : 1.0f;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
