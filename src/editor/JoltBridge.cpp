@@ -179,7 +179,7 @@ void JoltBridge::rebuild(Scene &scene) {
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, 2.11f, z, JPH::Vec3::sAxisX(),
                -0.75f, 0.75f, 0.0f, 85.0f);
       addHinge(prefix + " Hip", prefix + " Shin", x, 1.41f, z, JPH::Vec3::sAxisX(),
-               -1.5708f, 0.15f, -0.35f, 75.0f);
+               -1.5708f, 0.15f, 0.0f, 75.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisX(),
                -0.55f, 0.55f, 0.0f, 35.0f);
       ++leg;
@@ -215,7 +215,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.torqueLimitsNm = {{55.0f, 85.0f, 75.0f, 35.0f}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   // Calibrated Jolt command corresponding to a physical 90-degree knee.
-  constexpr float supportKnee = -1.4107963f;
+  constexpr float supportKnee = 0.0f;
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
@@ -266,7 +266,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = impl_->script == 1 ? 0.08f * t : -0.19f + 0.43f * t;
-        knee = supportKnee - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
+        knee = supportKnee - (impl_->script == 1 ? 1.5708f : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
