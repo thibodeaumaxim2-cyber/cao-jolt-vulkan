@@ -185,9 +185,9 @@ void JoltBridge::rebuild(Scene &scene) {
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, CaoLegGeometry::torsoHipHeight, z, JPH::Vec3::sAxisX(),
                -0.75f, 0.75f, 0.0f, CaoLegGeometry::hipPitchTorqueNm);
       addHinge(prefix + " Hip", prefix + " Shin", x, CaoLegGeometry::kneeHeight, z, JPH::Vec3::sAxisX(),
-               -1.5708f, 0.15f, 0.0f, 75.0f);
+               -1.5708f, 0.15f, 0.0f, CaoLegGeometry::kneePitchTorqueNm);
       addHinge(prefix + " Shin", prefix + " Foot", x, CaoLegGeometry::ankleHeight, z, JPH::Vec3::sAxisX(),
-               -0.55f, 0.55f, 0.0f, 35.0f);
+               -0.55f, 0.55f, 0.0f, CaoLegGeometry::anklePitchTorqueNm);
       ++leg;
     }
   }
@@ -218,7 +218,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry = {};
   impl_->telemetry.motionScript = impl_->script;
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
-  impl_->telemetry.torqueLimitsNm = {{55.0f, 85.0f, 75.0f, 35.0f}};
+  impl_->telemetry.torqueLimitsNm = {{55.0f, CaoLegGeometry::hipPitchTorqueNm, CaoLegGeometry::kneePitchTorqueNm, CaoLegGeometry::anklePitchTorqueNm}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   // Calibrated Jolt command corresponding to a physical 90-degree knee.
   const CaoLegGeometry::PlanarIK standingIK = CaoLegGeometry::solvePlanar(
@@ -356,7 +356,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   }
   impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
       ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
-  impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
+  impl_->physics->Update(seconds, 4, impl_->allocator.get(), impl_->jobs.get());
 
   // Safety guard for the experimental crawl drive: never let an accumulated
   // contact impulse turn the robot into a projectile.
