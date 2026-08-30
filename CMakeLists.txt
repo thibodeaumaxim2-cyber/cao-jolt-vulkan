@@ -164,7 +164,7 @@ add_custom_target(cao-shaders ALL
 
 add_dependencies(cao-jolt cao-shaders)
 if(TARGET cao-headless)
-  add_dependencies(cao-headless Jolt)
+  add_dependencies(cao-headless cao-editor-core)
 endif()
 if(TARGET cao-vulkan-renderer)
   add_dependencies(cao-vulkan-renderer cao-shaders)
