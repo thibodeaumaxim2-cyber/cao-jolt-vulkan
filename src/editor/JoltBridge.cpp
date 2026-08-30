@@ -39,6 +39,8 @@ struct JoltBridge::Impl {
   std::array<JPH::BodyID, 4> shins{};
   RobotTelemetry telemetry;
   StandingTuning tuning;
+  bool motorsEnabled = false;
+  float settleTime = 0.0f;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -76,6 +78,8 @@ void JoltBridge::rebuild(Scene &scene) {
   impl_->feet.fill(JPH::BodyID());
   impl_->shins.fill(JPH::BodyID());
   impl_->torso = JPH::BodyID();
+  impl_->motorsEnabled = false;
+  impl_->settleTime = 0.0f;
 
   if (!impl_->ground.IsInvalid()) {
     bodies.RemoveBody(impl_->ground);
@@ -167,7 +171,9 @@ void JoltBridge::rebuild(Scene &scene) {
               ? impl_->tuning.motorDamping : 1.0f;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
-      actuator->SetMotorState(JPH::EMotorState::Position);
+      // Start unpowered. The rigid links settle under Jolt constraints before
+      // position control is enabled, preventing an initialization impulse.
+      actuator->SetMotorState(JPH::EMotorState::Off);
       actuator->SetTargetAngle(targetAngle); // radians
       impl_->physics->AddConstraint(actuator);
       impl_->rotaryActuators.emplace_back(actuator);
@@ -216,6 +222,12 @@ void JoltBridge::demolish(const Scene &scene) {
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
+  impl_->settleTime += seconds;
+  if (!impl_->motorsEnabled && impl_->settleTime >= 0.50f) {
+    impl_->motorsEnabled = true;
+    for (const auto &actuator : impl_->rotaryActuators)
+      actuator->SetMotorState(JPH::EMotorState::Position);
+  }
   impl_->telemetry = {};
   impl_->telemetry.motionScript = impl_->script;
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
@@ -526,6 +538,10 @@ void JoltBridge::setRobotScript(int script) {
   if (!impl_ || !impl_->ready) return;
   impl_->script = std::clamp(script, 0, 3);
   impl_->scriptTime = 0.0f;
+  impl_->settleTime = 0.0f;
+  impl_->motorsEnabled = false;
+  for (const auto &actuator : impl_->rotaryActuators)
+    actuator->SetMotorState(JPH::EMotorState::Off);
   auto &bodies = impl_->physics->GetBodyInterface();
   for (const auto &[id, body] : impl_->bodies) bodies.ActivateBody(body);
 }
