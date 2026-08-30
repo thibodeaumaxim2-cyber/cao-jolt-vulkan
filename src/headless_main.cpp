@@ -7,13 +7,14 @@
 #include <iostream>
 #include <limits>
 #include <array>
+#include <string>
 
 using json = nlohmann::json;
 
-static json runTrial(const StandingTuning &tuning) {
+static json runTrial(const StandingTuning &tuning, int script) {
   Scene scene; scene.buildQuadruped();
   JoltBridge physics; physics.setStandingTuning(tuning); physics.initialize();
-  physics.rebuild(scene); physics.setRobotScript(0);
+  physics.rebuild(scene); physics.setRobotScript(script);
   constexpr float dt = 1.0f / 240.0f;
   constexpr int steps = 240 * 20;
   SceneObject *torso = nullptr;
@@ -50,7 +51,9 @@ static json runTrial(const StandingTuning &tuning) {
           {"com_gain",tuning.comGain},{"velocity_gain",tuning.velocityGain}};
 }
 
-int main() {
+int main(int argc, char **argv) {
+  const bool walking = argc > 1 && std::string(argv[1]) == "walk";
+  const int script = walking ? 1 : 0;
   // Ten deterministic controller candidates: damping and balance gains are
   // varied around the current model, then the lowest-scoring trial wins.
   const std::array<StandingTuning,10> candidates{{
@@ -62,10 +65,10 @@ int main() {
   }};
   json trials=json::array(); json best; float bestScore=std::numeric_limits<float>::max();
   for (const auto &candidate:candidates) {
-    json result=runTrial(candidate); trials.push_back(result);
+    json result=runTrial(candidate, script); trials.push_back(result);
     if (result["score"].get<float>()<bestScore) { bestScore=result["score"]; best=result; }
   }
-  json output={{"iterations",candidates.size()},{"controller","stand"},
+  json output={{"iterations",candidates.size()},{"controller",walking ? "walk" : "stand"},
                {"best",best},{"trials",trials}};
   std::ofstream file("headless_standing_result.json"); file<<output.dump(2)<<'\n';
   std::cout<<output.dump(2)<<'\n';
