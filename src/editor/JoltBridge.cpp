@@ -232,7 +232,11 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
       const float side = leg < 2 ? -1.0f : 1.0f;
-      constexpr float rightAngleKnee = -1.5707963f;
+      // Jolt reports the assembled neutral hinge reference near -0.16 rad.
+      // Offset the commanded joint angle so the physical femur/tibia pose
+      // reaches the requested 90 degrees instead of accumulating the rest
+      // pose offset as tracking error.
+      constexpr float rightAngleKnee = -1.4107963f;
       float roll = 0.0f, hip = 0.0f, knee = rightAngleKnee, ankle = 0.0f;
       float swingLiftForceN = 0.0f;
       int state = 0;
