@@ -307,8 +307,11 @@ void JoltBridge::step(Scene &scene, float seconds) {
     constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
     const float cycleDuration = impl_->script == 1 ? 3.20f : 1.05f;
-    const size_t scheduledSwingLeg = static_cast<size_t>(std::fmod(
-        impl_->scriptTime / cycleDuration * 4.0f, 4.0f));
+    const float globalCycle = std::fmod(impl_->scriptTime / cycleDuration, 1.0f);
+    // Walk offsets are 0,.25,.50,.75; their swing windows therefore occur
+    // in reverse leg order as the global cycle advances.
+    const size_t scheduledSwingLeg = static_cast<size_t>(
+        (3 - static_cast<int>(globalCycle * 4.0f) + 4) % 4);
     auto &bodyInterface = impl_->physics->GetBodyInterface();
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
