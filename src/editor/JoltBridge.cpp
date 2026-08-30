@@ -37,7 +37,8 @@ struct JoltBridge::Impl {
   JPH::BodyID torso;
   std::array<JPH::BodyID, 4> feet{};
   std::array<JPH::BodyID, 4> shins{};
-  RobotTelemetry telemetry;\n  StandingTuning tuning;
+  RobotTelemetry telemetry;
+  StandingTuning tuning;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
