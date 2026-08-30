@@ -262,8 +262,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
             const JPH::Body &footBody = footLock.GetBody();
             const float footY = static_cast<float>(footBody.GetPosition().GetY());
             const float footVy = footBody.GetLinearVelocity().GetY();
-            if (footY < 0.24f && footVy < 0.55f)
-              swingLiftForceN = std::clamp((0.24f - footY) * 48.0f - footVy * 4.0f, 0.0f, 12.0f) * lift;
+            if (footY < 0.20f && footVy < 0.45f)
+              swingLiftForceN = std::clamp((0.20f - footY) * 42.0f - footVy * 3.5f, 0.0f, 8.0f) * lift;
           }
         }
         planted = false;
@@ -288,7 +288,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       // ground reaction that joint targets alone cannot create. It is applied
       // only while this leg is planted, so three legs share propulsion.
       if (impl_->script == 1 && planted && !impl_->torso.IsInvalid()) {
-        const float stanceDriveN = cycle < 0.58f ? 18.0f : 8.0f;
+        const float stanceDriveN = cycle < 0.58f ? 4.0f : 2.0f;
         bodyInterface.AddForce(impl_->torso, JPH::Vec3(0.0f, 0.0f, stanceDriveN));
       }
       if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
@@ -306,6 +306,25 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
       ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
+
+  // Safety guard for the experimental crawl drive: never let an accumulated
+  // contact impulse turn the robot into a projectile.
+  if (impl_->script == 1 && !impl_->torso.IsInvalid()) {
+    auto &bodyInterface = impl_->physics->GetBodyInterface();
+    JPH::BodyLockWrite torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
+    if (torsoLock.Succeeded()) {
+      JPH::Body &torsoBody = torsoLock.GetBody();
+      JPH::Vec3 velocity = torsoBody.GetLinearVelocity();
+      const float horizontalSpeed = std::sqrt(velocity.GetX() * velocity.GetX() + velocity.GetZ() * velocity.GetZ());
+      if (horizontalSpeed > 1.25f) {
+        const float factor = 1.25f / horizontalSpeed;
+        velocity.SetX(velocity.GetX() * factor);
+        velocity.SetZ(velocity.GetZ() * factor);
+      }
+      velocity.SetY(std::clamp(velocity.GetY(), -2.0f, 1.0f));
+      bodyInterface.SetLinearVelocity(impl_->torso, velocity);
+    }
+  }
 
   // Read the actual Jolt hinge state and estimate motor demand from the
   // remaining position error. This is diagnostic telemetry, not a claim of
