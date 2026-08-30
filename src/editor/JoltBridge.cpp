@@ -349,7 +349,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       // model as a fallback when contact points are temporarily degenerate.
       const bool balanceReady =
           CaoBalance::insideTriangle(com, support, 0.01f) ||
-          CaoBalance::insideTriangle(com, nominalSupport, 0.01f);
+          CaoBalance::insideTriangle(com, nominalSupport, -0.02f);
       // Jolt reports the assembled neutral hinge reference near -0.16 rad.
       // Offset the commanded joint angle so the physical femur/tibia pose
       // reaches the requested 90 degrees instead of accumulating the rest
