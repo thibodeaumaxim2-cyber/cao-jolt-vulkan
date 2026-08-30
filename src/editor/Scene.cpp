@@ -12,9 +12,12 @@ void Scene::buildQuadruped(){
   part("Torso", {0,2.45f,0}, {1.55f,0.48f,0.72f});
   for(int side : {-1,1}) for(int end : {-1,1}){
     const char *front=end<0?"Front":"Rear"; const char *lr=side<0?"Left":"Right";
+    const std::string prefix=std::string(front)+" "+lr;
     const float x=.64f*side,z=.30f*end;
-    part(std::string(front)+" "+lr+" Hip", {x,2.00f,z}, {.26f,.78f,.26f});
-    part(std::string(front)+" "+lr+" Shin", {x,1.15f,z}, {.22f,.75f,.22f});
-    part(std::string(front)+" "+lr+" Foot", {x,.48f,z+.12f*end}, {.34f,.18f,.46f});
+    // Four rotary links per leg: roll carrier, thigh, shin, and foot.
+    part(prefix+" Hip Roll", {x,2.20f,z}, {.22f,.26f,.32f});
+    part(prefix+" Hip", {x,1.76f,z}, {.28f,.70f,.28f});
+    part(prefix+" Shin", {x,1.06f,z}, {.24f,.70f,.24f});
+    part(prefix+" Foot", {x,.47f,z+.12f*end}, {.36f,.18f,.48f});
   }
 }
