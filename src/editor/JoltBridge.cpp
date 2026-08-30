@@ -78,8 +78,9 @@ void JoltBridge::rebuild(Scene &scene) {
   JPH::BodyCreationSettings groundSettings(
       &groundShape, JPH::RVec3(0.0, -0.25, 0.0), JPH::Quat::sIdentity(),
       JPH::EMotionType::Static, CaoObjectLayers::Static);
-  groundSettings.mFriction = 0.38f;
-  groundSettings.mRestitution = 0.62f;
+  // A robot needs traction, not a bouncing floor. This is a rubber-mat contact.
+  groundSettings.mFriction = 1.05f;
+  groundSettings.mRestitution = 0.0f;
   impl_->ground = bodies.CreateAndAddBody(groundSettings, JPH::EActivation::DontActivate);
 
   for (SceneObject &object : scene.objects()) {
@@ -98,8 +99,10 @@ void JoltBridge::rebuild(Scene &scene) {
                    object.transform.position.z),
         JPH::Quat::sIdentity(), motion,
         object.dynamic ? CaoObjectLayers::Dynamic : CaoObjectLayers::Static);
-    settings.mFriction = 0.72f;
-    settings.mRestitution = 0.04f;
+    // Feet are the contact pads. High tangential traction limits sliding
+    // while the torso and links remain free to move.
+    settings.mFriction = object.name.find("Foot") != std::string::npos ? 1.35f : 0.58f;
+    settings.mRestitution = 0.0f;
     // SI mass model for the 20 kg quadruped: 12 kg torso, 1.2 kg thighs,
     // 0.8 kg shins and 0.25 kg feet. Jolt calculates matching inertia.
     float massKg = 1.0f;
@@ -212,7 +215,7 @@ void JoltBridge::demolish(const Scene &scene) {
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
-  const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 7.2f);
+  const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   if (impl_->script == 0) { // Stand
     for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
     for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.06f);
@@ -231,10 +234,10 @@ void JoltBridge::step(Scene &scene, float seconds) {
       const float swing = std::sin(legPhase);
       const float lift = std::max(0.0f, swing);
       // Contract during swing to clear the foot, then extend it for stance.
-      impl_->linearActuators[leg]->SetTargetPosition(-0.06f - 0.14f * lift);
-      impl_->rotaryActuators[leg * 2u]->SetTargetAngle(0.34f * swing);
+      impl_->linearActuators[leg]->SetTargetPosition(-0.06f - 0.10f * lift);
+      impl_->rotaryActuators[leg * 2u]->SetTargetAngle(0.23f * swing);
       // Counter-rotate the ankle to keep a planted foot approximately level.
-      impl_->rotaryActuators[leg * 2u + 1u]->SetTargetAngle(-0.20f * swing);
+      impl_->rotaryActuators[leg * 2u + 1u]->SetTargetAngle(-0.14f * swing);
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
