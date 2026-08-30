@@ -15,6 +15,11 @@ struct RobotTelemetry {
   std::array<std::array<float, 4>, 4> targetAnglesRad{};
   std::array<float, 4> liftAssistForceN{};
   std::array<float, 4> footFriction{};
+  std::array<std::array<float, 4>, 4> measuredAnglesRad{};
+  std::array<std::array<float, 4>, 4> angleErrorRad{};
+  std::array<float, 16> estimatedTorqueDemandNm{};
+  std::array<bool, 16> torqueSaturated{};
+  std::array<float, 4> footFriction{};
   std::array<float, 4> torqueLimitsNm{{55.0f, 85.0f, 75.0f, 35.0f}};
 };
 
