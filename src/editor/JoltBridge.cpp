@@ -251,8 +251,17 @@ void JoltBridge::step(Scene &scene, float seconds) {
         ankle = 0.20f * lift;
         roll = side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
-        // It has no net external force on the robot and is capped at 18 N.
-        swingLiftForceN = 18.0f * lift;
+        // It has no net external force. A bounded PD term prevents energy
+        // accumulation once the foot has cleared the floor.
+        if (!impl_->feet[leg].IsInvalid()) {
+          JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[leg]);
+          if (footLock.Succeeded()) {
+            const JPH::Body &footBody = footLock.GetBody();
+            const float footY = static_cast<float>(footBody.GetPosition().GetY());
+            const float footVy = footBody.GetLinearVelocity().GetY();
+            swingLiftForceN = std::clamp((0.18f - footY) * 50.0f - footVy * 1.5f, 0.0f, 4.0f) * lift;
+          }
+        }
         planted = false;
       } else { // place: extend the knee before high traction returns
         state = 3;
