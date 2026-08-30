@@ -181,7 +181,7 @@ void JoltBridge::rebuild(Scene &scene) {
       impl_->shins[leg] = findBody(prefix + " Shin");
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
       addHinge("Torso", prefix + " Hip Roll", x, CaoLegGeometry::torsoHipHeight + 0.11f, z, JPH::Vec3::sAxisZ(),
-               -0.35f, 0.35f, 0.0f, 55.0f);
+               -0.35f, 0.35f, 0.0f, CaoLegGeometry::hipRollTorqueNm);
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, CaoLegGeometry::torsoHipHeight, z, JPH::Vec3::sAxisX(),
                -0.75f, 0.75f, 0.0f, CaoLegGeometry::hipPitchTorqueNm);
       addHinge(prefix + " Hip", prefix + " Shin", x, CaoLegGeometry::kneeHeight, z, JPH::Vec3::sAxisX(),
@@ -218,7 +218,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry = {};
   impl_->telemetry.motionScript = impl_->script;
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
-  impl_->telemetry.torqueLimitsNm = {{55.0f, CaoLegGeometry::hipPitchTorqueNm, CaoLegGeometry::kneePitchTorqueNm, CaoLegGeometry::anklePitchTorqueNm}};
+  impl_->telemetry.torqueLimitsNm = {{CaoLegGeometry::hipRollTorqueNm, CaoLegGeometry::hipPitchTorqueNm, CaoLegGeometry::kneePitchTorqueNm, CaoLegGeometry::anklePitchTorqueNm}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   // Calibrated Jolt command corresponding to a physical 90-degree knee.
   const CaoLegGeometry::PlanarIK standingIK = CaoLegGeometry::solvePlanar(
