@@ -15,13 +15,13 @@ static json runTrial(const StandingTuning &tuning) {
   JoltBridge physics; physics.setStandingTuning(tuning); physics.initialize();
   physics.rebuild(scene); physics.setRobotScript(0);
   constexpr float dt = 1.0f / 240.0f;
-  constexpr int steps = 240 * 8;
+  constexpr int steps = 240 * 20;
   SceneObject *torso = nullptr;
   for (auto &o : scene.objects()) if (o.name == "Torso") torso = &o;
   if (!torso) return {{"stable", false}, {"score", 1e9}};
   const Vec3 initial = torso->transform.position;
   float maxSpeed=0, maxDisplacement=0, minHeight=std::numeric_limits<float>::max();
-  float maxError=0; int saturated=0;
+  float maxError=0; int saturated=0; float instabilityTime=-1.0f; json samples=json::array();
   for (int i=0;i<steps;++i) {
     physics.step(scene, dt);
     const Vec3 p=torso->transform.position;
@@ -31,6 +31,12 @@ static json runTrial(const StandingTuning &tuning) {
     maxSpeed=std::max(maxSpeed,m.torsoSpeedMps);
     for (const auto &leg:m.angleErrorRad) for(float e:leg) maxError=std::max(maxError,std::abs(e));
     saturated += static_cast<int>(std::count(m.torqueSaturated.begin(),m.torqueSaturated.end(),true));
+    if (i % 4 == 0) samples.push_back({{"time_s",(i+1)*dt},{"torso_height_m",p.y},
+      {"torso_speed_mps",m.torsoSpeedMps},{"horizontal_displacement_m",maxDisplacement},
+      {"max_joint_error_rad",maxError}});
+    const bool unstable = m.torsoSpeedMps > 0.75f || maxDisplacement > 0.50f ||
+                          p.y < 1.50f || maxError > 0.75f;
+    if (unstable) { instabilityTime = (i+1)*dt; break; }
   }
   const float score=maxSpeed*2.0f+maxDisplacement*4.0f+
       std::max(0.0f,1.50f-minHeight)*3.0f+maxError+saturated*0.002f;
@@ -38,7 +44,7 @@ static json runTrial(const StandingTuning &tuning) {
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"max_horizontal_displacement_m",maxDisplacement},
           {"min_torso_height_m",minHeight},{"max_joint_error_rad",maxError},
-          {"torque_saturated_samples",saturated},
+          {"torque_saturated_samples",saturated},{"instability_time_s",instabilityTime},{"samples",samples},
           {"motor_frequency_hz",tuning.motorFrequencyHz},
           {"motor_damping",tuning.motorDamping},
           {"com_gain",tuning.comGain},{"velocity_gain",tuning.velocityGain}};
