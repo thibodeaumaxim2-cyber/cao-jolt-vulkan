@@ -12,8 +12,8 @@ using json = nlohmann::json;
 
 static json runTrial(const StandingTuning &tuning) {
   Scene scene; scene.buildQuadruped();
-  JoltBridge physics; physics.initialize(); physics.rebuild(scene);
-  physics.setStandingTuning(tuning); physics.setRobotScript(0);
+  JoltBridge physics; physics.setStandingTuning(tuning); physics.initialize();
+  physics.rebuild(scene); physics.setRobotScript(0);
   constexpr float dt = 1.0f / 240.0f;
   constexpr int steps = 240 * 8;
   SceneObject *torso = nullptr;
