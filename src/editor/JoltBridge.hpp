@@ -14,7 +14,6 @@ struct RobotTelemetry {
   std::array<int, 4> legState{}; // 0 stance, 1 unload, 2 swing, 3 place
   std::array<std::array<float, 4>, 4> targetAnglesRad{};
   std::array<float, 4> liftAssistForceN{};
-  std::array<float, 4> footFriction{};
   std::array<std::array<float, 4>, 4> measuredAnglesRad{};
   std::array<std::array<float, 4>, 4> angleErrorRad{};
   std::array<float, 16> estimatedTorqueDemandNm{};
