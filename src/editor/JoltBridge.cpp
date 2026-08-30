@@ -358,15 +358,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
       ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 4, impl_->allocator.get(), impl_->jobs.get());
 
-  // Stand is a posture-settling mode. Remove accumulated whole-body drift
-  // after each solve while leaving contacts, gravity, and hinge motors active.
-  if (impl_->script == 0) {
-    auto &bodyInterface = impl_->physics->GetBodyInterface();
-    for (const auto &[id, body] : impl_->bodies) {
-      bodyInterface.SetLinearVelocity(body, JPH::Vec3::sZero());
-      bodyInterface.SetAngularVelocity(body, JPH::Vec3::sZero());
-    }
-  }
+  // No velocity teleportation: gravity, contact impulses, and actuator
+  // torque are allowed to determine whether the robot can really stand.
 
   // Safety guard for the experimental crawl drive: never let an accumulated
   // contact impulse turn the robot into a projectile.
