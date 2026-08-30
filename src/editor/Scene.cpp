@@ -9,15 +9,18 @@ void Scene::buildPyramid(int levels,bool dynamic){clear();levels=std::clamp(leve
 void Scene::buildQuadruped(){
   clear(); quadruped_=true;
   auto part=[&](const std::string &name,const Vec3&p,const Vec3&s){Transform t;t.position=p;t.scale=s;auto&o=add(Primitive::Box,t);o.name=name;o.dynamic=true;};
-  part("Torso", {0,2.45f,0}, {1.55f,0.48f,0.72f});
+  // Keep the spawn pose consistent with LegGeometry/JoltBridge:
+  // straight 1.41 m legs, foot soles at y=0, and a lower COM.
+  part("Torso", {0,2.11f,0}, {1.55f,0.48f,0.72f});
   for(int side : {-1,1}) for(int end : {-1,1}){
     const char *front=end<0?"Front":"Rear"; const char *lr=side<0?"Left":"Right";
     const std::string prefix=std::string(front)+" "+lr;
     const float x=.64f*side,z=.30f*end;
     // Four rotary links per leg: roll carrier, thigh, shin, and foot.
-    part(prefix+" Hip Roll", {x,2.20f,z}, {.22f,.26f,.32f});
+    part(prefix+" Hip Roll", {x,2.22f,z}, {.22f,.26f,.32f});
     part(prefix+" Hip", {x,1.76f,z}, {.28f,.70f,.28f});
     part(prefix+" Shin", {x,1.06f,z}, {.24f,.70f,.24f});
-    part(prefix+" Foot", {x,.47f,z+.12f*end}, {.36f,.18f,.48f});
+    // The 0.18 m high foot is centered at 0.09 m: its sole rests on ground.
+    part(prefix+" Foot", {x,.09f,z+.12f*end}, {.36f,.18f,.48f});
   }
 }
