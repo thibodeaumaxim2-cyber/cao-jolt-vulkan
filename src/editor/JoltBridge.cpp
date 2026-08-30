@@ -1,5 +1,6 @@
 #include "JoltBridge.hpp"
 #include "JoltLayers.hpp"
+#include "LegGeometry.hpp"
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Factory.h>
@@ -170,17 +171,17 @@ void JoltBridge::rebuild(Scene &scene) {
     for (int side : {-1, 1}) for (int end : {-1, 1}) {
       const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
           " " + (side < 0 ? "Left" : "Right");
-      const float x = 0.64f * side, z = 0.30f * end;
+      const float x = CaoLegGeometry::hipOffsetX * side, z = CaoLegGeometry::hipOffsetZ * end;
       impl_->feet[leg] = findBody(prefix + " Foot");
       impl_->shins[leg] = findBody(prefix + " Shin");
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
-      addHinge("Torso", prefix + " Hip Roll", x, 2.22f, z, JPH::Vec3::sAxisZ(),
+      addHinge("Torso", prefix + " Hip Roll", x, CaoLegGeometry::torsoHipHeight + 0.11f, z, JPH::Vec3::sAxisZ(),
                -0.35f, 0.35f, 0.0f, 55.0f);
-      addHinge(prefix + " Hip Roll", prefix + " Hip", x, 2.11f, z, JPH::Vec3::sAxisX(),
+      addHinge(prefix + " Hip Roll", prefix + " Hip", x, CaoLegGeometry::torsoHipHeight, z, JPH::Vec3::sAxisX(),
                -0.75f, 0.75f, 0.0f, 85.0f);
-      addHinge(prefix + " Hip", prefix + " Shin", x, 1.41f, z, JPH::Vec3::sAxisX(),
+      addHinge(prefix + " Hip", prefix + " Shin", x, CaoLegGeometry::kneeHeight, z, JPH::Vec3::sAxisX(),
                -1.5708f, 0.15f, 0.0f, 75.0f);
-      addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisX(),
+      addHinge(prefix + " Shin", prefix + " Foot", x, CaoLegGeometry::ankleHeight, z, JPH::Vec3::sAxisX(),
                -0.55f, 0.55f, 0.0f, 35.0f);
       ++leg;
     }
@@ -215,7 +216,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.torqueLimitsNm = {{55.0f, 85.0f, 75.0f, 35.0f}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   // Calibrated Jolt command corresponding to a physical 90-degree knee.
-  constexpr float supportKnee = 0.0f;
+  constexpr float supportKnee = CaoLegGeometry::supportKneeAngle;
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
@@ -266,7 +267,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = impl_->script == 1 ? 0.08f * t : -0.19f + 0.43f * t;
-        knee = supportKnee - (impl_->script == 1 ? 1.5708f : 0.62f) * lift;
+        knee = supportKnee - (impl_->script == 1 ? -CaoLegGeometry::swingKneeAngle : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
