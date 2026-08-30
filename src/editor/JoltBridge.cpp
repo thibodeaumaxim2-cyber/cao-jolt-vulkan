@@ -258,10 +258,15 @@ void JoltBridge::step(Scene &scene, float seconds) {
       }
       std::array<CaoBalance::Point, 4> footPoints{};
       for (size_t i = 0; i < 4; ++i) {
-        const int pointSide = i < 2 ? -1 : 1;
-        const int pointEnd = (i == 0 || i == 2) ? -1 : 1;
-        footPoints[i] = {CaoLegGeometry::hipOffsetX * pointSide,
-                         CaoLegGeometry::hipOffsetZ * pointEnd};
+        footPoints[i] = {CaoLegGeometry::hipOffsetX * (i < 2 ? -1.0f : 1.0f),
+                         CaoLegGeometry::hipOffsetZ * ((i == 0 || i == 2) ? -1.0f : 1.0f)};
+        if (!impl_->feet[i].IsInvalid()) {
+          JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[i]);
+          if (footLock.Succeeded()) {
+            const JPH::RVec3 p = footLock.GetBody().GetPosition();
+            footPoints[i] = {static_cast<float>(p.GetX()), static_cast<float>(p.GetZ())};
+          }
+        }
       }
       std::array<CaoBalance::Point, 3> support{};
       size_t supportIndex = 0;
