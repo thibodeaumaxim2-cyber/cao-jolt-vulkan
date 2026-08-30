@@ -297,6 +297,22 @@ void JoltBridge::step(Scene &scene, float seconds) {
       ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 1.55f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
 
+  // Read the actual Jolt hinge state and estimate motor demand from the
+  // remaining position error. This is diagnostic telemetry, not a claim of
+  // measured electrical current or exact constraint torque.
+  for (size_t i = 0; i < impl_->rotaryActuators.size() && i < 16; ++i) {
+    const size_t leg = i / 4u, joint = i % 4u;
+    const float actual = impl_->rotaryActuators[i]->GetCurrentAngle();
+    const float target = impl_->telemetry.targetAnglesRad[leg][joint];
+    const float error = std::remainder(target - actual, 2.0f * JPH::JPH_PI);
+    const float limit = impl_->telemetry.torqueLimitsNm[joint];
+    const float demand = std::min(limit, std::abs(error) * limit / 0.50f);
+    impl_->telemetry.measuredAnglesRad[leg][joint] = actual;
+    impl_->telemetry.angleErrorRad[leg][joint] = error;
+    impl_->telemetry.estimatedTorqueDemandNm[i] = demand;
+    impl_->telemetry.torqueSaturated[i] = std::abs(error) >= 0.50f;
+  }
+
   const auto &lockInterface = impl_->physics->GetBodyLockInterface();
   for (SceneObject &object : scene.objects()) {
     const auto it = impl_->bodies.find(object.id);
