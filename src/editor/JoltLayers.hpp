@@ -6,7 +6,8 @@
 namespace CaoObjectLayers {
 static constexpr JPH::ObjectLayer Static = 0;
 static constexpr JPH::ObjectLayer Dynamic = 1;
-static constexpr uint32_t Count = 2;
+static constexpr JPH::ObjectLayer RobotLink = 2;
+static constexpr uint32_t Count = 3;
 }
 
 namespace CaoBroadPhaseLayers {
@@ -18,7 +19,9 @@ static constexpr uint32_t Count = 2;
 class CaoObjectLayerPairFilter final : public JPH::ObjectLayerPairFilter {
  public:
   bool ShouldCollide(JPH::ObjectLayer first, JPH::ObjectLayer second) const override {
-    return first == CaoObjectLayers::Dynamic || second == CaoObjectLayers::Dynamic;
+    if (first == CaoObjectLayers::RobotLink && second == CaoObjectLayers::RobotLink)
+      return false;
+    return first != CaoObjectLayers::Static || second != CaoObjectLayers::Static;
   }
 };
 
