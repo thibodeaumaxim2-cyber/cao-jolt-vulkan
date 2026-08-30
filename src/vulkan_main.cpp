@@ -501,8 +501,12 @@ int main() {
         for (size_t joint = 0; joint < 4; ++joint)
           maxAngleError = std::max(maxAngleError, std::abs(robotTelemetry.angleErrorRad[leg][joint]));
       for (bool value : robotTelemetry.torqueSaturated) if (value) ++saturated;
-      ImGui::Text("Tracking error: %.3f rad | torque-limited joints: %d/16",
-                  maxAngleError, saturated);
+      constexpr float radiansToDegrees = 57.2957795f;
+      ImGui::Text("Tracking error: %.2f deg (%.3f rad) | torque-limited joints: %d/16",
+                  maxAngleError * radiansToDegrees, maxAngleError, saturated);
+      ImGui::Text("Support knee target: %.1f deg",
+                  robotTelemetry.targetAnglesRad[0][2] * radiansToDegrees);
+      ImGui::TextDisabled("Walk support geometry: femur/tibia = 90 deg");
       if (robotTelemetry.activeSwingLeg >= 0)
         ImGui::Text("Swing assist: %.1f N", robotTelemetry.swingLiftForceN);
       if (ImGui::Button("Export robot JSON"))
