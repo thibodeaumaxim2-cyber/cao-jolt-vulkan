@@ -3,6 +3,7 @@
 #include "JoltBridge.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
+#include <string>
 
 class RobotFrameRecorder {
  public:
@@ -15,6 +16,7 @@ class RobotFrameRecorder {
   float elapsedSeconds() const { return elapsedSeconds_; }
   float durationSeconds() const { return durationSeconds_; }
   bool write(const std::filesystem::path &path) const;
+  const std::string& runId() const { return runId_; }
 
  private:
   float durationSeconds_;
@@ -23,4 +25,5 @@ class RobotFrameRecorder {
   bool recording_ = false;
   bool complete_ = false;
   nlohmann::json frames_ = nlohmann::json::array();
+  std::string runId_;
 };
