@@ -33,6 +33,7 @@ struct JoltBridge::Impl {
   float scriptTime = 0.0f;
   JPH::BodyID ground;
   std::array<JPH::BodyID, 4> feet{};
+  std::array<JPH::BodyID, 4> shins{};
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -68,6 +69,7 @@ void JoltBridge::rebuild(Scene &scene) {
   }
   impl_->bodies.clear();
   impl_->feet.fill(JPH::BodyID());
+  impl_->shins.fill(JPH::BodyID());
 
   if (!impl_->ground.IsInvalid()) {
     bodies.RemoveBody(impl_->ground);
@@ -163,6 +165,7 @@ void JoltBridge::rebuild(Scene &scene) {
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
       impl_->feet[leg] = findBody(prefix + " Foot");
+      impl_->shins[leg] = findBody(prefix + " Shin");
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
       addHinge("Torso", prefix + " Hip Roll", x, 2.22f, z, JPH::Vec3::sAxisZ(),
                -0.35f, 0.35f, 0.0f, 55.0f);
@@ -221,6 +224,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
       const float side = leg < 2 ? -1.0f : 1.0f;
       float roll = 0.0f, hip = 0.0f, knee = -0.48f, ankle = 0.0f;
+      float swingLiftForceN = 0.0f;
       bool planted = cycle < 0.66f || cycle >= 0.96f;
       if (cycle < 0.58f) { // stance: push the planted foot rearward
         const float t = cycle / 0.58f;
@@ -237,6 +241,9 @@ void JoltBridge::step(Scene &scene, float seconds) {
         knee = -0.48f - 0.62f * lift;
         ankle = 0.20f * lift;
         roll = side * 0.10f * (1.0f - lift);
+        // Equal-and-opposite internal actuator force assists the rotary knee.
+        // It has no net external force on the robot and is capped at 18 N.
+        swingLiftForceN = 18.0f * lift;
         planted = false;
       } else { // place: extend the knee before high traction returns
         const float t = (cycle - 0.96f) / 0.04f;
@@ -247,6 +254,12 @@ void JoltBridge::step(Scene &scene, float seconds) {
       setLegPose(leg, roll, hip, knee, ankle);
       if (!impl_->feet[leg].IsInvalid())
         bodyInterface.SetFriction(impl_->feet[leg], planted ? 1.35f : 0.08f);
+      if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
+          !impl_->shins[leg].IsInvalid()) {
+        const JPH::Vec3 liftForce(0.0f, swingLiftForceN, 0.0f);
+        bodyInterface.AddForce(impl_->feet[leg], liftForce);
+        bodyInterface.AddForce(impl_->shins[leg], -liftForce);
+      }
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
