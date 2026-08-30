@@ -34,6 +34,7 @@ struct JoltBridge::Impl {
   JPH::BodyID ground;
   std::array<JPH::BodyID, 4> feet{};
   std::array<JPH::BodyID, 4> shins{};
+  RobotTelemetry telemetry;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -202,6 +203,10 @@ void JoltBridge::demolish(const Scene &scene) {
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
+  impl_->telemetry = {};
+  impl_->telemetry.motionScript = impl_->script;
+  impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
+  impl_->telemetry.torqueLimitsNm = {{55.0f, 85.0f, 75.0f, 35.0f}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
@@ -209,6 +214,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->rotaryActuators[first + 1u]->SetTargetAngle(hip);
     impl_->rotaryActuators[first + 2u]->SetTargetAngle(knee);
     impl_->rotaryActuators[first + 3u]->SetTargetAngle(ankle);
+    impl_->telemetry.targetAnglesRad[leg] = {{roll, hip, knee, ankle}};
   };
   if (impl_->script == 0) { // Stand
     for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.48f, 0.0f);
@@ -225,16 +231,19 @@ void JoltBridge::step(Scene &scene, float seconds) {
       const float side = leg < 2 ? -1.0f : 1.0f;
       float roll = 0.0f, hip = 0.0f, knee = -0.48f, ankle = 0.0f;
       float swingLiftForceN = 0.0f;
+      int state = 0;
       bool planted = cycle < 0.66f || cycle >= 0.96f;
       if (cycle < 0.58f) { // stance: push the planted foot rearward
         const float t = cycle / 0.58f;
         hip = 0.18f - 0.42f * t;
         ankle = -0.10f * hip;
       } else if (cycle < 0.66f) { // unload: move body weight to the support legs
+        state = 1;
         const float t = (cycle - 0.58f) / 0.08f;
         hip = -0.24f + 0.05f * t;
         roll = side * 0.12f;
       } else if (cycle < 0.96f) { // lift and swing: knee folds, foot advances
+        state = 2;
         const float t = (cycle - 0.66f) / 0.30f;
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = -0.19f + 0.43f * t;
@@ -246,12 +255,20 @@ void JoltBridge::step(Scene &scene, float seconds) {
         swingLiftForceN = 18.0f * lift;
         planted = false;
       } else { // place: extend the knee before high traction returns
+        state = 3;
         const float t = (cycle - 0.96f) / 0.04f;
         hip = 0.24f - 0.06f * t;
         knee = -0.48f - 0.18f * (1.0f - t);
         ankle = 0.05f * (1.0f - t);
       }
       setLegPose(leg, roll, hip, knee, ankle);
+      impl_->telemetry.legState[leg] = state;
+      impl_->telemetry.footFriction[leg] = planted ? 1.35f : 0.08f;
+      impl_->telemetry.liftAssistForceN[leg] = swingLiftForceN;
+      if (state == 2) {
+        impl_->telemetry.activeSwingLeg = static_cast<int>(leg);
+        impl_->telemetry.swingLiftForceN = swingLiftForceN;
+      }
       if (!impl_->feet[leg].IsInvalid())
         bodyInterface.SetFriction(impl_->feet[leg], planted ? 1.35f : 0.08f);
       if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
@@ -266,6 +283,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (size_t leg = 0; leg < 4; ++leg)
       setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
+  impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
+      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 1.55f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
 
   const auto &lockInterface = impl_->physics->GetBodyLockInterface();
@@ -275,6 +294,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
     JPH::BodyLockRead lock(lockInterface, it->second);
     if (!lock.Succeeded()) continue;
     const JPH::RVec3 position = lock.GetBody().GetPosition();
+    if (object.name == "Torso")
+      impl_->telemetry.torsoSpeedMps = lock.GetBody().GetLinearVelocity().Length();
     object.transform.position = {
         static_cast<float>(position.GetX()),
         static_cast<float>(position.GetY()),
@@ -323,6 +344,11 @@ void JoltBridge::setRobotScript(int script) {
 
 int JoltBridge::robotScript() const {
   return impl_ ? impl_->script : 0;
+}
+
+const RobotTelemetry& JoltBridge::telemetry() const {
+  static const RobotTelemetry empty{};
+  return impl_ ? impl_->telemetry : empty;
 }
 
 bool JoltBridge::initialized() const {
