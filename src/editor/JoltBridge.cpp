@@ -212,18 +212,29 @@ void JoltBridge::demolish(const Scene &scene) {
 void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
-  const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 3.2f);
+  const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 7.2f);
   if (impl_->script == 0) { // Stand
     for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
     for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.06f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
-    for (size_t i = 0; i < impl_->rotaryActuators.size(); ++i) {
-      const float pairPhase = phase + ((i / 2u) % 2u == 0u ? 0.0f : JPH::JPH_PI);
-      impl_->rotaryActuators[i]->SetTargetAngle((i % 2u == 0u ? 0.32f : 0.16f) * std::sin(pairPhase));
-    }
-    for (size_t i = 0; i < impl_->linearActuators.size(); ++i) {
-      const float legPhase = phase + ((impl_->script == 1 ? i : i / 2u) % 2u == 0u ? 0.0f : JPH::JPH_PI);
-      impl_->linearActuators[i]->SetTargetPosition(-0.06f + 0.11f * std::max(0.0f, std::sin(legPhase)));
+    // Rotary actuators are stored as hip then ankle for each leg:
+    // Front Left, Rear Left, Front Right, Rear Right.
+    // A walking cycle must advance one foot at a time; a trot moves
+    // diagonal pairs together. This prevents the old front/rear rocking.
+    constexpr std::array<float, 4> walkOffsets{
+        0.0f, 1.5f * JPH::JPH_PI, JPH::JPH_PI, 0.5f * JPH::JPH_PI};
+    constexpr std::array<float, 4> trotOffsets{
+        0.0f, JPH::JPH_PI, JPH::JPH_PI, 0.0f};
+    const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
+    for (size_t leg = 0; leg < impl_->linearActuators.size(); ++leg) {
+      const float legPhase = phase + offsets[leg];
+      const float swing = std::sin(legPhase);
+      const float lift = std::max(0.0f, swing);
+      // Contract during swing to clear the foot, then extend it for stance.
+      impl_->linearActuators[leg]->SetTargetPosition(-0.06f - 0.14f * lift);
+      impl_->rotaryActuators[leg * 2u]->SetTargetAngle(0.34f * swing);
+      // Counter-rotate the ankle to keep a planted foot approximately level.
+      impl_->rotaryActuators[leg * 2u + 1u]->SetTargetAngle(-0.20f * swing);
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
