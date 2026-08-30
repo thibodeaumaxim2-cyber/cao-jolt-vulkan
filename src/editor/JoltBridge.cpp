@@ -104,7 +104,10 @@ void JoltBridge::rebuild(Scene &scene) {
         JPH::RVec3(object.transform.position.x, object.transform.position.y,
                    object.transform.position.z),
         JPH::Quat::sIdentity(), motion,
-        object.dynamic ? CaoObjectLayers::Dynamic : CaoObjectLayers::Static);
+        object.dynamic
+            ? (scene.isQuadruped() && object.name != "Torso"
+                ? CaoObjectLayers::RobotLink : CaoObjectLayers::Dynamic)
+            : CaoObjectLayers::Static);
     // Feet are the contact pads. High tangential traction limits sliding
     // while the torso and links remain free to move.
     settings.mFriction = object.name.find("Foot") != std::string::npos ? 1.35f : 0.58f;
