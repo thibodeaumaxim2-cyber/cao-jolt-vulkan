@@ -6,6 +6,7 @@
 #include <backends/imgui_impl_vulkan.h>
 #include "editor/JoltBridge.hpp"
 #include "editor/Scene.hpp"
+#include "editor/RobotExport.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,6 +27,7 @@ static int gCreatePrimitive = -1;
 static uint32_t gSelectedId = 1;
 static int gRobotScript = 0;
 static bool gDeleteRequested = false, gPhysicsRebuildRequested = false;
+static bool gRobotParametersExported = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *window, double x, double y) {
   if (gUiReady) ImGui_ImplGlfw_CursorPosCallback(window, x, y);
@@ -481,6 +483,9 @@ int main() {
         gSimulationRunning = gRobotScript != 0;
       }
       ImGui::Text("Active script: %s", robotScripts[gRobotScript]);
+      if (ImGui::Button("Export robot JSON"))
+        gRobotParametersExported = exportRobotParameters(scene, gRobotScript, "robot_parameters.json");
+      if (gRobotParametersExported) ImGui::SameLine(), ImGui::TextDisabled("saved robot_parameters.json");
       ImGui::End();
 
       ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
