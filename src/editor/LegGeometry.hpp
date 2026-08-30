@@ -1,4 +1,6 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 
 // Shared quadruped dimensions in metres. Keep renderer, Jolt anchors,
 // telemetry, and the future IK solver on the same physical model.
@@ -13,4 +15,24 @@ inline constexpr float tibiaLength = 0.71f;
 inline constexpr float footLength = 0.30f;
 inline constexpr float supportKneeAngle = 0.0f;
 inline constexpr float swingKneeAngle = -1.5708f;
+
+struct PlanarIK {
+  float hip = 0.0f;
+  float knee = supportKneeAngle;
+};
+
+// Solve a two-link leg in the vertical plane. Angles use the same
+// convention as the Jolt hinge targets: a straight leg is knee = 0.
+inline PlanarIK solvePlanar(float verticalDrop, float forwardReach) {
+  const float a = femurLength;
+  const float b = tibiaLength;
+  const float distance = std::clamp(std::hypot(verticalDrop, forwardReach),
+                                    0.05f, a + b - 0.001f);
+  const float hip = std::atan2(forwardReach, verticalDrop)
+      - std::acos(std::clamp((a*a + distance*distance - b*b) /
+                             (2.0f*a*distance), -1.0f, 1.0f));
+  const float knee = -std::acos(std::clamp((a*a + b*b - distance*distance) /
+                                           (2.0f*a*b), -1.0f, 1.0f));
+  return {hip, knee};
+}
 }
