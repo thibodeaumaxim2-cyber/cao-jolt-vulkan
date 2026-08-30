@@ -18,8 +18,8 @@ inline constexpr float hipRollTorqueNm = 165.0f;
 inline constexpr float hipPitchTorqueNm = 480.0f;
 inline constexpr float kneePitchTorqueNm = 360.0f;
 inline constexpr float anklePitchTorqueNm = 150.0f;
-inline constexpr float hipPitchMotorFrequencyHz = 8.0f;
-inline constexpr float hipPitchMotorDamping = 1.5f;
+inline constexpr float hipPitchMotorFrequencyHz = 3.5f;
+inline constexpr float hipPitchMotorDamping = 2.4f;
 inline constexpr float swingKneeAngle = -1.5708f;
 
 struct PlanarIK {
