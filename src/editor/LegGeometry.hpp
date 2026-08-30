@@ -14,6 +14,9 @@ inline constexpr float femurLength = 0.70f;
 inline constexpr float tibiaLength = 0.71f;
 inline constexpr float footLength = 0.30f;
 inline constexpr float supportKneeAngle = 0.0f;
+inline constexpr float hipPitchTorqueNm = 120.0f;
+inline constexpr float hipPitchMotorFrequencyHz = 8.0f;
+inline constexpr float hipPitchMotorDamping = 1.5f;
 inline constexpr float swingKneeAngle = -1.5708f;
 
 struct PlanarIK {
