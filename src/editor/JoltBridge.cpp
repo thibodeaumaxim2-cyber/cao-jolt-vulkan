@@ -221,10 +221,10 @@ void JoltBridge::step(Scene &scene, float seconds) {
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
     // The offsets produce a four-beat walk or diagonal-pair trot.
-    constexpr std::array<float, 4> walkOffsets{0.0f, 0.75f, 0.50f, 0.25f};
+    constexpr std::array<float, 4> walkOffsets{0.0f, 0.25f, 0.50f, 0.75f};
     constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
-    const float cycleDuration = impl_->script == 1 ? 1.55f : 1.05f;
+    const float cycleDuration = impl_->script == 1 ? 2.40f : 1.05f;
     auto &bodyInterface = impl_->physics->GetBodyInterface();
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
@@ -233,18 +233,18 @@ void JoltBridge::step(Scene &scene, float seconds) {
       float swingLiftForceN = 0.0f;
       int state = 0;
       bool planted = cycle < 0.66f || cycle >= 0.96f;
-      if (cycle < 0.58f) { // stance: push the planted foot rearward
-        const float t = cycle / 0.58f;
+      if (cycle < (impl_->script == 1 ? 0.72f : 0.58f)) { // crawl stance: three legs support the body
+        const float t = cycle / (impl_->script == 1 ? 0.72f : 0.58f);
         hip = 0.18f - 0.42f * t;
         ankle = -0.10f * hip;
-      } else if (cycle < 0.66f) { // unload: move body weight to the support legs
+      } else if (cycle < (impl_->script == 1 ? 0.78f : 0.66f)) { // unload before the single-leg swing
         state = 1;
-        const float t = (cycle - 0.58f) / 0.08f;
+        const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) / 0.06f;
         hip = -0.24f + 0.05f * t;
         roll = side * 0.12f;
-      } else if (cycle < 0.96f) { // lift and swing: knee folds, foot advances
+      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f)) { // lift and swing exactly one leg
         state = 2;
-        const float t = (cycle - 0.66f) / 0.30f;
+        const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
         hip = -0.19f + 0.43f * t;
         knee = -0.48f - 0.62f * lift;
@@ -266,7 +266,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         planted = false;
       } else { // place: extend the knee before high traction returns
         state = 3;
-        const float t = (cycle - 0.96f) / 0.04f;
+        const float t = (cycle - (impl_->script == 1 ? 0.98f : 0.96f)) / (impl_->script == 1 ? 0.02f : 0.04f);
         hip = 0.24f - 0.06f * t;
         knee = -0.48f - 0.18f * (1.0f - t);
         ankle = 0.05f * (1.0f - t);
@@ -294,7 +294,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
   impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
-      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 1.55f : 1.05f), 1.0f) : 0.0f;
+      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 2, impl_->allocator.get(), impl_->jobs.get());
 
   // Read the actual Jolt hinge state and estimate motor demand from the
