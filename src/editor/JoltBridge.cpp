@@ -202,7 +202,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->rotaryActuators[first + 3u]->SetTargetAngle(ankle);
   };
   if (impl_->script == 0) { // Stand
-    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.35f, 0.0f);
+    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.48f, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     constexpr std::array<float, 4> walkOffsets{
         0.0f, 1.5f * JPH::JPH_PI, JPH::JPH_PI, 0.5f * JPH::JPH_PI};
@@ -214,10 +214,11 @@ void JoltBridge::step(Scene &scene, float seconds) {
       const float swing = std::sin(legPhase);
       const float lift = std::max(0.0f, swing);
       const float side = leg < 2 ? -1.0f : 1.0f;
-      // Roll moves the pelvis over the supporting pair; the rotary knee
-      // folds only during swing for visible ground clearance.
-      setLegPose(leg, side * 0.10f * std::sin(legPhase + JPH::JPH_PI * 0.5f),
-                 0.26f * swing, -0.35f - 0.55f * lift, -0.16f * swing);
+      // Roll moves the pelvis over the supporting pair. During swing,
+      // hip pitch advances the leg and the knee flexes to lift the foot.
+      // During stance the knee returns to its supporting extension.
+      setLegPose(leg, side * 0.12f * std::sin(legPhase + JPH::JPH_PI * 0.5f),
+                 0.42f * swing, -0.48f - 0.58f * lift, -0.24f * swing);
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
