@@ -31,8 +31,11 @@ inline PlanarIK solvePlanar(float verticalDrop, float forwardReach) {
   const float hip = std::atan2(forwardReach, verticalDrop)
       - std::acos(std::clamp((a*a + distance*distance - b*b) /
                              (2.0f*a*distance), -1.0f, 1.0f));
-  const float knee = -std::acos(std::clamp((a*a + b*b - distance*distance) /
-                                           (2.0f*a*b), -1.0f, 1.0f));
+  // Convert the triangle's internal angle to the hinge convention:
+  // collinear/extended links = 0 rad, folded 90 degrees = -pi/2.
+  const float internalAngle = std::acos(std::clamp((a*a + b*b - distance*distance) /
+                                                   (2.0f*a*b), -1.0f, 1.0f));
+  const float knee = -(3.14159265358979323846f - internalAngle);
   return {hip, knee};
 }
 }
