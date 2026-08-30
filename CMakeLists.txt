@@ -122,6 +122,9 @@ if(CAO_RENDERER STREQUAL "VULKAN")
     src/renderer/ShaderLoader.cpp
     src/renderer/VulkanResources.cpp)
   target_include_directories(cao-vulkan-renderer PUBLIC src)
+  add_executable(cao-headless src/headless_main.cpp)
+  target_include_directories(cao-headless PRIVATE src)
+  target_link_libraries(cao-headless PRIVATE cao-editor-core)
 else()
   add_executable(cao-jolt src/main.cpp)
 endif()
@@ -160,11 +163,14 @@ add_custom_target(cao-shaders ALL
   DEPENDS assets/shaders/cad.vert assets/shaders/cad.frag)
 
 add_dependencies(cao-jolt cao-shaders)
+if(TARGET cao-headless)
+  add_dependencies(cao-headless Jolt)
+endif()
 if(TARGET cao-vulkan-renderer)
   add_dependencies(cao-vulkan-renderer cao-shaders)
 endif()
 
-install(TARGETS cao-jolt RUNTIME DESTINATION bin)
+install(TARGETS cao-jolt cao-headless RUNTIME DESTINATION bin)
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
