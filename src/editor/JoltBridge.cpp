@@ -1,6 +1,7 @@
 #include "JoltBridge.hpp"
 #include "JoltLayers.hpp"
 #include "LegGeometry.hpp"
+#include "BalanceModel.hpp"
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Factory.h>
@@ -245,6 +246,28 @@ void JoltBridge::step(Scene &scene, float seconds) {
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
       const float side = leg < 2 ? -1.0f : 1.0f;
+      // Do not lift a leg unless the projected torso COM is supported by
+      // the remaining three nominal foot contacts.
+      CaoBalance::Point com{};
+      if (!impl_->torso.IsInvalid()) {
+        JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
+        if (torsoLock.Succeeded()) {
+          const JPH::RVec3 p = torsoLock.GetBody().GetPosition();
+          com = {static_cast<float>(p.GetX()), static_cast<float>(p.GetZ())};
+        }
+      }
+      std::array<CaoBalance::Point, 4> footPoints{};
+      for (size_t i = 0; i < 4; ++i) {
+        const int pointSide = i < 2 ? -1 : 1;
+        const int pointEnd = (i == 0 || i == 2) ? -1 : 1;
+        footPoints[i] = {CaoLegGeometry::hipOffsetX * pointSide,
+                         CaoLegGeometry::hipOffsetZ * pointEnd};
+      }
+      std::array<CaoBalance::Point, 3> support{};
+      size_t supportIndex = 0;
+      for (size_t i = 0; i < 4; ++i)
+        if (i != leg) support[supportIndex++] = footPoints[i];
+      const bool balanceReady = CaoBalance::insideTriangle(com, support, 0.01f);
       // Jolt reports the assembled neutral hinge reference near -0.16 rad.
       // Offset the commanded joint angle so the physical femur/tibia pose
       // reaches the requested 90 degrees instead of accumulating the rest
@@ -269,7 +292,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) / 0.06f;
         hip = impl_->script == 1 ? supportHip : -0.24f + 0.05f * t;
         roll = impl_->script == 1 ? 0.0f : side * 0.12f;
-      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f)) { // lift and swing exactly one leg
+      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f) && balanceReady) { // lift only with three-leg support
         state = 2;
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
