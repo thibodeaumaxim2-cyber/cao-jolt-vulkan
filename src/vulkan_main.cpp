@@ -481,7 +481,7 @@ int main() {
       if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
-      ImGui::TextDisabled("Quadruped: hip 65 N m | linear knee 1,200 N, 0.44 m stroke | ankle 25 N m");
+      ImGui::TextDisabled("Quadruped: 16 rotary actuators | hip roll 45 N m | hip/knee 80/70 N m | ankle 35 N m");
       const char *robotScripts[] = {"Stand", "Walk", "Trot", "Jump"};
       if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts))) {
         physics.setRobotScript(gRobotScript);
