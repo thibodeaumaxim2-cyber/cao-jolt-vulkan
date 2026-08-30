@@ -14,6 +14,7 @@
 #include <Jolt/RegisterTypes.h>
 
 #include <algorithm>
+#include <array>
 #include <thread>
 #include <unordered_map>
 
@@ -31,6 +32,7 @@ struct JoltBridge::Impl {
   int script = 0;
   float scriptTime = 0.0f;
   JPH::BodyID ground;
+  std::array<JPH::BodyID, 4> feet{};
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -65,6 +67,7 @@ void JoltBridge::rebuild(Scene &scene) {
     bodies.DestroyBody(body);
   }
   impl_->bodies.clear();
+  impl_->feet.fill(JPH::BodyID());
 
   if (!impl_->ground.IsInvalid()) {
     bodies.RemoveBody(impl_->ground);
@@ -154,10 +157,12 @@ void JoltBridge::rebuild(Scene &scene) {
       impl_->rotaryActuators.emplace_back(actuator);
       impl_->actuators.emplace_back(std::move(actuator));
     };
-    for (int side : {-1, 1}) for (int end : {-1, 1}) {
+    size_t leg = 0;
+    for (int side : {-1, 1}) for (int end : {-1, 1}, ++leg) {
       const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
+      impl_->feet[leg] = findBody(prefix + " Foot");
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
       addHinge("Torso", prefix + " Hip Roll", x, 2.22f, z, JPH::Vec3::sAxisZ(),
                -0.35f, 0.35f, 0.0f, 55.0f);
@@ -204,21 +209,43 @@ void JoltBridge::step(Scene &scene, float seconds) {
   if (impl_->script == 0) { // Stand
     for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.48f, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
-    constexpr std::array<float, 4> walkOffsets{
-        0.0f, 1.5f * JPH::JPH_PI, JPH::JPH_PI, 0.5f * JPH::JPH_PI};
-    constexpr std::array<float, 4> trotOffsets{
-        0.0f, JPH::JPH_PI, JPH::JPH_PI, 0.0f};
+    // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
+    // The offsets produce a four-beat walk or diagonal-pair trot.
+    constexpr std::array<float, 4> walkOffsets{0.0f, 0.75f, 0.50f, 0.25f};
+    constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
+    const float cycleDuration = impl_->script == 1 ? 1.55f : 1.05f;
+    auto &bodyInterface = impl_->physics->GetBodyInterface();
     for (size_t leg = 0; leg < 4; ++leg) {
-      const float legPhase = phase + offsets[leg];
-      const float swing = std::sin(legPhase);
-      const float lift = std::max(0.0f, swing);
+      const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
       const float side = leg < 2 ? -1.0f : 1.0f;
-      // Roll moves the pelvis over the supporting pair. During swing,
-      // hip pitch advances the leg and the knee flexes to lift the foot.
-      // During stance the knee returns to its supporting extension.
-      setLegPose(leg, side * 0.12f * std::sin(legPhase + JPH::JPH_PI * 0.5f),
-                 0.42f * swing, -0.48f - 0.58f * lift, -0.24f * swing);
+      float roll = 0.0f, hip = 0.0f, knee = -0.48f, ankle = 0.0f;
+      bool planted = cycle < 0.66f || cycle >= 0.96f;
+      if (cycle < 0.58f) { // stance: push the planted foot rearward
+        const float t = cycle / 0.58f;
+        hip = 0.18f - 0.42f * t;
+        ankle = -0.10f * hip;
+      } else if (cycle < 0.66f) { // unload: move body weight to the support legs
+        const float t = (cycle - 0.58f) / 0.08f;
+        hip = -0.24f + 0.05f * t;
+        roll = side * 0.12f;
+      } else if (cycle < 0.96f) { // lift and swing: knee folds, foot advances
+        const float t = (cycle - 0.66f) / 0.30f;
+        const float lift = std::sin(JPH::JPH_PI * t);
+        hip = -0.19f + 0.43f * t;
+        knee = -0.48f - 0.62f * lift;
+        ankle = 0.20f * lift;
+        roll = side * 0.10f * (1.0f - lift);
+        planted = false;
+      } else { // place: extend the knee before high traction returns
+        const float t = (cycle - 0.96f) / 0.04f;
+        hip = 0.24f - 0.06f * t;
+        knee = -0.48f - 0.18f * (1.0f - t);
+        ankle = 0.05f * (1.0f - t);
+      }
+      setLegPose(leg, roll, hip, knee, ankle);
+      if (!impl_->feet[leg].IsInvalid())
+        bodyInterface.SetFriction(impl_->feet[leg], planted ? 1.35f : 0.08f);
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
