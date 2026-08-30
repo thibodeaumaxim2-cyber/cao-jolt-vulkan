@@ -36,6 +36,8 @@ class CaoBroadPhaseLayerInterface final : public JPH::BroadPhaseLayerInterface {
 class CaoObjectVsBroadPhaseFilter final : public JPH::ObjectVsBroadPhaseLayerFilter {
  public:
   bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhase) const override {
-    return layer == CaoObjectLayers::Dynamic || broadPhase == CaoBroadPhaseLayers::Dynamic;
+    // RobotLink bodies must still enter the static broad phase so feet
+    // collide with the floor; only Static-vs-Static is excluded.
+    return layer != CaoObjectLayers::Static;
   }
 };
