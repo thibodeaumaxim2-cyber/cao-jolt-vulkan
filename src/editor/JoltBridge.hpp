@@ -4,7 +4,7 @@
 #include <array>
 #include <memory>
 
-struct RobotTelemetry {
+struct StandingTuning {\n  float motorFrequencyHz = 3.5f;\n  float motorDamping = 2.4f;\n  float comGain = 0.30f;\n  float velocityGain = 0.08f;\n};\n\nstruct RobotTelemetry {
   int motionScript = 0;
   int activeSwingLeg = -1;
   int linkCount = 0;
@@ -33,7 +33,7 @@ class JoltBridge {
   void rebuild(Scene&);
   void step(Scene&, float seconds);
   void demolish(const Scene&);
-  void setRobotScript(int script);
+  void setRobotScript(int script);\n  void setStandingTuning(const StandingTuning& tuning);
   int robotScript() const;
   const RobotTelemetry& telemetry() const;
   void shutdown();
