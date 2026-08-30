@@ -141,7 +141,7 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mLimitsMin = minStroke; settings.mLimitsMax = maxStroke; // meters
       settings.mMotorSettings.SetForceLimit(maxForce); // N
       settings.mMotorSettings.mSpringSettings.mFrequency = 10.0f;
-      settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
+      settings.mMotorSettings.mSpringSettings.mDamping = 0.32f; // compliant telescopic legs
       JPH::Ref<JPH::SliderConstraint> actuator = new JPH::SliderConstraint(
           *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
