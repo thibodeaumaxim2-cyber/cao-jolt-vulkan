@@ -9,7 +9,6 @@
 #include <Jolt/Physics/Body/BodyLockInterface.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
-#include <Jolt/Physics/Constraints/SliderConstraint.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -29,7 +28,6 @@ struct JoltBridge::Impl {
   std::unordered_map<uint32_t, JPH::BodyID> bodies;
   std::vector<JPH::Ref<JPH::Constraint>> actuators;
   std::vector<JPH::Ref<JPH::HingeConstraint>> rotaryActuators;
-  std::vector<JPH::Ref<JPH::SliderConstraint>> linearActuators;
   int script = 0;
   float scriptTime = 0.0f;
   JPH::BodyID ground;
@@ -61,7 +59,7 @@ void JoltBridge::rebuild(Scene &scene) {
 
   auto &bodies = impl_->physics->GetBodyInterface();
   for (const auto &actuator : impl_->actuators) impl_->physics->RemoveConstraint(actuator);
-  impl_->actuators.clear(); impl_->rotaryActuators.clear(); impl_->linearActuators.clear();
+  impl_->actuators.clear(); impl_->rotaryActuators.clear();
   for (const auto &[id, body] : impl_->bodies) {
     bodies.RemoveBody(body);
     bodies.DestroyBody(body);
@@ -107,6 +105,7 @@ void JoltBridge::rebuild(Scene &scene) {
     // 0.8 kg shins and 0.25 kg feet. Jolt calculates matching inertia.
     float massKg = 1.0f;
     if (object.name == "Torso") massKg = 12.0f;
+    else if (object.name.find("Hip Roll") != std::string::npos) massKg = 0.30f;
     else if (object.name.find("Hip") != std::string::npos) massKg = 1.20f;
     else if (object.name.find("Shin") != std::string::npos) massKg = 0.80f;
     else if (object.name.find("Foot") != std::string::npos) massKg = 0.25f;
@@ -127,36 +126,9 @@ void JoltBridge::rebuild(Scene &scene) {
         if (object.name == name) return impl_->bodies.at(object.id);
       return JPH::BodyID();
     };
-    const auto addSlider = [&](const std::string &parent, const std::string &child,
-                                float minStroke, float maxStroke, float targetStroke, float maxForce) {
-      const JPH::BodyID parentId = findBody(parent), childId = findBody(child);
-      if (parentId.IsInvalid() || childId.IsInvalid()) return;
-      const auto &locks = impl_->physics->GetBodyLockInterface();
-      const JPH::BodyID pair[] = {parentId, childId};
-      JPH::BodyLockMultiWrite pairLock(locks, pair, 2);
-      JPH::Body *parentBody = pairLock.GetBody(0);
-      JPH::Body *childBody = pairLock.GetBody(1);
-      if (parentBody == nullptr || childBody == nullptr) return;
-      JPH::SliderConstraintSettings settings;
-      settings.mSpace = JPH::EConstraintSpace::WorldSpace;
-      settings.mAutoDetectPoint = true;
-      settings.SetSliderAxis(JPH::Vec3::sAxisY());
-      settings.mLimitsMin = minStroke; settings.mLimitsMax = maxStroke; // meters
-      settings.mMotorSettings.SetForceLimit(maxForce); // N
-      settings.mMotorSettings.mSpringSettings.mFrequency = 10.0f;
-      settings.mMotorSettings.mSpringSettings.mDamping = 0.32f; // compliant telescopic legs
-      JPH::Ref<JPH::SliderConstraint> actuator = new JPH::SliderConstraint(
-          *parentBody, *childBody, settings);
-      actuator->SetMotorState(JPH::EMotorState::Position);
-      actuator->SetTargetPosition(targetStroke); // meters
-      impl_->physics->AddConstraint(actuator);
-      impl_->linearActuators.emplace_back(actuator);
-      impl_->actuators.emplace_back(std::move(actuator));
-    };
-
     const auto addHinge = [&](const std::string &parent, const std::string &child,
-                               float x, float y, float z, float minAngle,
-                               float maxAngle, float targetAngle, float maxTorque) {
+                               float x, float y, float z, const JPH::Vec3 &axis,
+                               float minAngle, float maxAngle, float targetAngle, float maxTorque) {
       const JPH::BodyID parentId = findBody(parent), childId = findBody(child);
       if (parentId.IsInvalid() || childId.IsInvalid()) return;
       const auto &locks = impl_->physics->GetBodyLockInterface();
@@ -168,7 +140,7 @@ void JoltBridge::rebuild(Scene &scene) {
       JPH::HingeConstraintSettings settings;
       settings.mSpace = JPH::EConstraintSpace::WorldSpace;
       settings.mPoint1 = settings.mPoint2 = JPH::RVec3(x, y, z);
-      settings.mHingeAxis1 = settings.mHingeAxis2 = JPH::Vec3::sAxisZ();
+      settings.mHingeAxis1 = settings.mHingeAxis2 = axis;
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
@@ -186,9 +158,15 @@ void JoltBridge::rebuild(Scene &scene) {
       const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
           " " + (side < 0 ? "Left" : "Right");
       const float x = 0.64f * side, z = 0.30f * end;
-      addHinge("Torso", prefix + " Hip", x, 2.22f, z, -0.85f, 0.85f, 0.18f * end, 65.0f);
-      addSlider(prefix + " Hip", prefix + " Shin", -0.22f, 0.22f, -0.06f, 1200.0f);
-      addHinge(prefix + " Shin", prefix + " Foot", x, 0.65f, z, -0.55f, 0.55f, 0.05f, 25.0f);
+      // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
+      addHinge("Torso", prefix + " Hip Roll", x, 2.22f, z, JPH::Vec3::sAxisX(),
+               -0.35f, 0.35f, 0.0f, 45.0f);
+      addHinge(prefix + " Hip Roll", prefix + " Hip", x, 2.11f, z, JPH::Vec3::sAxisZ(),
+               -0.75f, 0.75f, 0.0f, 80.0f);
+      addHinge(prefix + " Hip", prefix + " Shin", x, 1.41f, z, JPH::Vec3::sAxisZ(),
+               -1.30f, 0.15f, -0.35f, 70.0f);
+      addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisZ(),
+               -0.55f, 0.55f, 0.0f, 35.0f);
     }
   }
 }
@@ -216,33 +194,35 @@ void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
+  const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
+    const size_t first = leg * 4u;
+    impl_->rotaryActuators[first]->SetTargetAngle(roll);
+    impl_->rotaryActuators[first + 1u]->SetTargetAngle(hip);
+    impl_->rotaryActuators[first + 2u]->SetTargetAngle(knee);
+    impl_->rotaryActuators[first + 3u]->SetTargetAngle(ankle);
+  };
   if (impl_->script == 0) { // Stand
-    for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
-    for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.06f);
+    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, 0.0f, -0.35f, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
-    // Rotary actuators are stored as hip then ankle for each leg:
-    // Front Left, Rear Left, Front Right, Rear Right.
-    // A walking cycle must advance one foot at a time; a trot moves
-    // diagonal pairs together. This prevents the old front/rear rocking.
     constexpr std::array<float, 4> walkOffsets{
         0.0f, 1.5f * JPH::JPH_PI, JPH::JPH_PI, 0.5f * JPH::JPH_PI};
     constexpr std::array<float, 4> trotOffsets{
         0.0f, JPH::JPH_PI, JPH::JPH_PI, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
-    for (size_t leg = 0; leg < impl_->linearActuators.size(); ++leg) {
+    for (size_t leg = 0; leg < 4; ++leg) {
       const float legPhase = phase + offsets[leg];
       const float swing = std::sin(legPhase);
       const float lift = std::max(0.0f, swing);
-      // Contract during swing to clear the foot, then extend it for stance.
-      impl_->linearActuators[leg]->SetTargetPosition(-0.06f - 0.10f * lift);
-      impl_->rotaryActuators[leg * 2u]->SetTargetAngle(0.23f * swing);
-      // Counter-rotate the ankle to keep a planted foot approximately level.
-      impl_->rotaryActuators[leg * 2u + 1u]->SetTargetAngle(-0.14f * swing);
+      const float side = leg < 2 ? -1.0f : 1.0f;
+      // Roll moves the pelvis over the supporting pair; the rotary knee
+      // folds only during swing for visible ground clearance.
+      setLegPose(leg, side * 0.10f * std::sin(legPhase + JPH::JPH_PI * 0.5f),
+                 0.26f * swing, -0.35f - 0.55f * lift, -0.16f * swing);
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
-    for (auto &joint : impl_->rotaryActuators) joint->SetTargetAngle(0.0f);
-    for (auto &joint : impl_->linearActuators) joint->SetTargetPosition(-0.16f + 0.31f * extension);
+    for (size_t leg = 0; leg < 4; ++leg)
+      setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
   impl_->physics->Update(seconds, 1, impl_->allocator.get(), impl_->jobs.get());
 
