@@ -16,7 +16,7 @@ static json runTrial(const StandingTuning &tuning, int script) {
   JoltBridge physics; physics.setStandingTuning(tuning); physics.initialize();
   physics.rebuild(scene); physics.setRobotScript(script);
   constexpr float dt = 1.0f / 240.0f;
-  constexpr int steps = 240 * 20;
+  constexpr int steps = 240 * 60;
   SceneObject *torso = nullptr;
   for (auto &o : scene.objects()) if (o.name == "Torso") torso = &o;
   if (!torso) return {{"stable", false}, {"score", 1e9}};
