@@ -121,7 +121,7 @@ void JoltBridge::rebuild(Scene &scene) {
     else if (object.name.find("Hip Roll") != std::string::npos) massKg = 0.03f;
     else if (object.name.find("Hip") != std::string::npos) massKg = 0.12f;
     else if (object.name.find("Shin") != std::string::npos) massKg = 0.08f;
-    else if (object.name.find("Foot") != std::string::npos) massKg = 0.025f;
+    else if (object.name.find("Foot") != std::string::npos) massKg = 0.15f;
     if (object.dynamic) {
       settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
       settings.mMassPropertiesOverride.mMass = massKg;
@@ -225,6 +225,19 @@ void JoltBridge::step(Scene &scene, float seconds) {
       CaoLegGeometry::torsoHipHeight - CaoLegGeometry::ankleHeight, 0.0f);
   const float supportHip = std::clamp(standingIK.hip, -0.75f, 0.75f);
   const float supportKnee = std::clamp(standingIK.knee, -1.5708f, 0.15f);
+  // Shift the leg targets against measured COM error. This is a bounded
+  // posture correction: it changes joint targets, never teleports bodies.
+  float comX = 0.0f, comZ = 0.0f;
+  if (!impl_->torso.IsInvalid()) {
+    JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
+    if (torsoLock.Succeeded()) {
+      const JPH::RVec3 p = torsoLock.GetBody().GetPosition();
+      comX = static_cast<float>(p.GetX());
+      comZ = static_cast<float>(p.GetZ());
+    }
+  }
+  const float comHipCorrection = std::clamp(-comX * 0.35f, -0.20f, 0.20f);
+  const float comRollCorrection = std::clamp(comZ * 0.35f, -0.15f, 0.15f);
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
@@ -234,7 +247,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->telemetry.targetAnglesRad[leg] = {{roll, hip, knee, ankle}};
   };
   if (impl_->script == 0) { // Stand
-    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, 0.0f, supportHip, supportKnee, 0.0f);
+    for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, comRollCorrection, supportHip + comHipCorrection, supportKnee, 0.0f);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
     // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
     // The offsets produce a four-beat walk or diagonal-pair trot.
@@ -286,7 +299,8 @@ void JoltBridge::step(Scene &scene, float seconds) {
         if (impl_->script == 1) {
           // Hold the three support legs nearly fixed while the fourth leg
           // prepares to lift. This is an equilibrium-first crawl test.
-          hip = supportHip;
+          hip = supportHip + comHipCorrection;
+          roll = comRollCorrection;
           ankle = 0.0f;
         } else {
           hip = 0.18f - 0.42f * t;
@@ -295,13 +309,14 @@ void JoltBridge::step(Scene &scene, float seconds) {
       } else if (cycle < (impl_->script == 1 ? 0.78f : 0.66f)) { // unload before the single-leg swing
         state = 1;
         const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) / 0.06f;
-        hip = impl_->script == 1 ? supportHip : -0.24f + 0.05f * t;
+        hip = impl_->script == 1 ? supportHip + comHipCorrection : -0.24f + 0.05f * t;
+        if (impl_->script == 1) roll = comRollCorrection;
         roll = impl_->script == 1 ? 0.0f : side * 0.12f;
       } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f) && balanceReady) { // lift only with three-leg support
         state = 2;
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
-        hip = impl_->script == 1 ? supportHip + 0.08f * t : -0.19f + 0.43f * t;
+        hip = impl_->script == 1 ? supportHip + comHipCorrection + 0.08f * t : -0.19f + 0.43f * t;
         knee = supportKnee - (impl_->script == 1 ? -CaoLegGeometry::swingKneeAngle : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
