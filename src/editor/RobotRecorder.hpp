@@ -1,5 +1,6 @@
 #pragma once
 #include "Scene.hpp"
+#include "JoltBridge.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 
@@ -8,7 +9,7 @@ class RobotFrameRecorder {
   explicit RobotFrameRecorder(float durationSeconds = 5.0f);
 
   void start(int motionScript);
-  void capture(const Scene &scene, float deltaSeconds);
+  void capture(const Scene &scene, float deltaSeconds, const RobotTelemetry &telemetry);
   bool recording() const { return recording_; }
   bool complete() const { return complete_; }
   float elapsedSeconds() const { return elapsedSeconds_; }
