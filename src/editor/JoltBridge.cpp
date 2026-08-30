@@ -37,7 +37,7 @@ struct JoltBridge::Impl {
   JPH::BodyID torso;
   std::array<JPH::BodyID, 4> feet{};
   std::array<JPH::BodyID, 4> shins{};
-  RobotTelemetry telemetry;
+  RobotTelemetry telemetry;\n  StandingTuning tuning;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -259,9 +259,11 @@ void JoltBridge::step(Scene &scene, float seconds) {
     supportCenter.x /= 4.0f; supportCenter.z /= 4.0f;
   }
   const float comHipCorrection = std::clamp(
-      (supportCenter.x - comX) * 0.30f - comVx * 0.08f, -0.20f, 0.20f);
+      (supportCenter.x - comX) * impl_->tuning.comGain -
+      comVx * impl_->tuning.velocityGain, -0.20f, 0.20f);
   const float comRollCorrection = std::clamp(
-      (supportCenter.z - comZ) * 0.30f - comVz * 0.08f, -0.15f, 0.15f);
+      (supportCenter.z - comZ) * impl_->tuning.comGain -
+      comVz * impl_->tuning.velocityGain, -0.15f, 0.15f);
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
@@ -509,6 +511,14 @@ void JoltBridge::shutdown() {
   delete JPH::Factory::sInstance;
   JPH::Factory::sInstance = nullptr;
   impl_->ready = false;
+}
+
+void JoltBridge::setStandingTuning(const StandingTuning& tuning) {
+  if (!impl_) return;
+  impl_->tuning.motorFrequencyHz = std::clamp(tuning.motorFrequencyHz, 1.0f, 8.0f);
+  impl_->tuning.motorDamping = std::clamp(tuning.motorDamping, 0.5f, 5.0f);
+  impl_->tuning.comGain = std::clamp(tuning.comGain, 0.05f, 0.80f);
+  impl_->tuning.velocityGain = std::clamp(tuning.velocityGain, 0.0f, 0.30f);
 }
 
 void JoltBridge::setRobotScript(int script) {
