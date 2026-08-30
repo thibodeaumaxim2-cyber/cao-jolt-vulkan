@@ -5,10 +5,10 @@
 #include <memory>
 
 struct StandingTuning {
-  float motorFrequencyHz = 3.5f;
-  float motorDamping = 2.4f;
-  float comGain = 0.30f;
-  float velocityGain = 0.08f;
+  float motorFrequencyHz = 5.0f;
+  float motorDamping = 3.0f;
+  float comGain = 0.22f;
+  float velocityGain = 0.18f;
 };
 
 struct RobotTelemetry {
