@@ -238,21 +238,28 @@ void JoltBridge::step(Scene &scene, float seconds) {
       bool planted = cycle < (impl_->script == 1 ? 0.72f : 0.66f) || cycle >= (impl_->script == 1 ? 0.98f : 0.96f);
       if (cycle < (impl_->script == 1 ? 0.72f : 0.58f)) { // crawl stance: three legs support the body
         const float t = cycle / (impl_->script == 1 ? 0.72f : 0.58f);
-        hip = 0.18f - 0.42f * t;
-        ankle = -0.10f * hip;
+        if (impl_->script == 1) {
+          // Hold the three support legs nearly fixed while the fourth leg
+          // prepares to lift. This is an equilibrium-first crawl test.
+          hip = 0.0f;
+          ankle = 0.0f;
+        } else {
+          hip = 0.18f - 0.42f * t;
+          ankle = -0.10f * hip;
+        }
       } else if (cycle < (impl_->script == 1 ? 0.78f : 0.66f)) { // unload before the single-leg swing
         state = 1;
         const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) / 0.06f;
-        hip = -0.24f + 0.05f * t;
-        roll = side * 0.12f;
+        hip = impl_->script == 1 ? 0.0f : -0.24f + 0.05f * t;
+        roll = impl_->script == 1 ? 0.0f : side * 0.12f;
       } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f)) { // lift and swing exactly one leg
         state = 2;
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
-        hip = -0.19f + 0.43f * t;
-        knee = -0.48f - 0.62f * lift;
-        ankle = 0.20f * lift;
-        roll = side * 0.10f * (1.0f - lift);
+        hip = impl_->script == 1 ? 0.08f * t : -0.19f + 0.43f * t;
+        knee = -0.48f - (impl_->script == 1 ? 0.42f : 0.62f) * lift;
+        ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
+        roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
         // Equal-and-opposite internal actuator force assists the rotary knee.
         // It has no net external force. A bounded PD term prevents energy
         // accumulation once the foot has cleared the floor.
@@ -270,9 +277,9 @@ void JoltBridge::step(Scene &scene, float seconds) {
       } else { // place: extend the knee before high traction returns
         state = 3;
         const float t = (cycle - (impl_->script == 1 ? 0.98f : 0.96f)) / (impl_->script == 1 ? 0.02f : 0.04f);
-        hip = 0.24f - 0.06f * t;
-        knee = -0.48f - 0.18f * (1.0f - t);
-        ankle = 0.05f * (1.0f - t);
+        hip = impl_->script == 1 ? 0.0f : 0.24f - 0.06f * t;
+        knee = impl_->script == 1 ? -0.48f : -0.48f - 0.18f * (1.0f - t);
+        ankle = impl_->script == 1 ? 0.0f : 0.05f * (1.0f - t);
       }
       setLegPose(leg, roll, hip, knee, ankle);
       impl_->telemetry.legState[leg] = state;
@@ -287,10 +294,9 @@ void JoltBridge::step(Scene &scene, float seconds) {
       // During crawl stance, a bounded body force supplies the horizontal
       // ground reaction that joint targets alone cannot create. It is applied
       // only while this leg is planted, so three legs share propulsion.
-      if (impl_->script == 1 && planted && !impl_->torso.IsInvalid()) {
-        const float stanceDriveN = cycle < 0.58f ? 4.0f : 2.0f;
-        bodyInterface.AddForce(impl_->torso, JPH::Vec3(0.0f, 0.0f, stanceDriveN));
-      }
+      // Crawl stability phase intentionally has no artificial propulsion.
+      // First establish three-leg equilibrium; propulsion is added only after
+      // this balance test is reliable.
       if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
           !impl_->shins[leg].IsInvalid()) {
         const JPH::Vec3 liftForce(0.0f, swingLiftForceN, 0.0f);
