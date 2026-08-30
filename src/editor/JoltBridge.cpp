@@ -225,19 +225,43 @@ void JoltBridge::step(Scene &scene, float seconds) {
       CaoLegGeometry::torsoHipHeight - CaoLegGeometry::ankleHeight, 0.0f);
   const float supportHip = std::clamp(standingIK.hip, -0.75f, 0.75f);
   const float supportKnee = std::clamp(standingIK.knee, -1.5708f, 0.15f);
-  // Shift the leg targets against measured COM error. This is a bounded
-  // posture correction: it changes joint targets, never teleports bodies.
-  float comX = 0.0f, comZ = 0.0f;
+  // Lightweight centroid-based whole-body correction. The support target
+  // follows the measured feet rather than assuming the robot is at world zero.
+  // Velocity feedback adds anticipation without teleporting any body.
+  float comX = 0.0f, comZ = 0.0f, comVx = 0.0f, comVz = 0.0f;
   if (!impl_->torso.IsInvalid()) {
     JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
     if (torsoLock.Succeeded()) {
-      const JPH::RVec3 p = torsoLock.GetBody().GetPosition();
-      comX = static_cast<float>(p.GetX());
-      comZ = static_cast<float>(p.GetZ());
+      const JPH::Body &body = torsoLock.GetBody();
+      const JPH::RVec3 p = body.GetPosition();
+      const JPH::Vec3 v = body.GetLinearVelocity();
+      comX = static_cast<float>(p.GetX()); comZ = static_cast<float>(p.GetZ());
+      comVx = v.GetX(); comVz = v.GetZ();
     }
   }
-  const float comHipCorrection = std::clamp(-comX * 0.35f, -0.20f, 0.20f);
-  const float comRollCorrection = std::clamp(comZ * 0.35f, -0.15f, 0.15f);
+  CaoBalance::Point supportCenter{};
+  int validFeet = 0;
+  for (size_t i = 0; i < 4; ++i) {
+    CaoBalance::Point point{
+        CaoLegGeometry::hipOffsetX * (i < 2 ? -1.0f : 1.0f),
+        CaoLegGeometry::hipOffsetZ * ((i == 0 || i == 2) ? -1.0f : 1.0f)};
+    if (!impl_->feet[i].IsInvalid()) {
+      JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[i]);
+      if (footLock.Succeeded()) {
+        const JPH::RVec3 p = footLock.GetBody().GetPosition();
+        point = {static_cast<float>(p.GetX()), static_cast<float>(p.GetZ())};
+        ++validFeet;
+      }
+    }
+    supportCenter.x += point.x; supportCenter.z += point.z;
+  }
+  if (validFeet > 0) {
+    supportCenter.x /= 4.0f; supportCenter.z /= 4.0f;
+  }
+  const float comHipCorrection = std::clamp(
+      (supportCenter.x - comX) * 0.30f - comVx * 0.08f, -0.20f, 0.20f);
+  const float comRollCorrection = std::clamp(
+      (supportCenter.z - comZ) * 0.30f - comVz * 0.08f, -0.15f, 0.15f);
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     impl_->rotaryActuators[first]->SetTargetAngle(roll);
