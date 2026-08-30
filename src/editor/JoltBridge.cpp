@@ -41,6 +41,7 @@ struct JoltBridge::Impl {
   StandingTuning tuning;
   bool motorsEnabled = false;
   float settleTime = 0.0f;
+  float motorBlend = 0.0f;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -223,8 +224,10 @@ void JoltBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || seconds <= 0.0f) return;
   impl_->scriptTime += seconds;
   impl_->settleTime += seconds;
+  if (impl_->motorsEnabled) impl_->motorBlend = std::min(1.0f, impl_->motorBlend + seconds);
   if (!impl_->motorsEnabled && impl_->settleTime >= 0.50f) {
     impl_->motorsEnabled = true;
+    impl_->motorBlend = 0.0f;
     for (const auto &actuator : impl_->rotaryActuators)
       actuator->SetMotorState(JPH::EMotorState::Position);
   }
@@ -277,13 +280,18 @@ void JoltBridge::step(Scene &scene, float seconds) {
   const float comRollCorrection = std::clamp(
       (supportCenter.z - comZ) * impl_->tuning.comGain -
       comVz * impl_->tuning.velocityGain, -0.15f, 0.15f);
+  const float blend = impl_->motorsEnabled
+      ? std::clamp(impl_->motorBlend, 0.0f, 1.0f) : 0.0f;
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
-    impl_->rotaryActuators[first]->SetTargetAngle(roll);
-    impl_->rotaryActuators[first + 1u]->SetTargetAngle(hip);
-    impl_->rotaryActuators[first + 2u]->SetTargetAngle(knee);
-    impl_->rotaryActuators[first + 3u]->SetTargetAngle(ankle);
-    impl_->telemetry.targetAnglesRad[leg] = {{roll, hip, knee, ankle}};
+    const std::array<float,4> desired{{roll, hip, knee, ankle}};
+    std::array<float,4> target{};
+    for (size_t joint=0; joint<4; ++joint) {
+      const float current = impl_->rotaryActuators[first + joint]->GetCurrentAngle();
+      target[joint] = current + (desired[joint] - current) * blend;
+      impl_->rotaryActuators[first + joint]->SetTargetAngle(target[joint]);
+    }
+    impl_->telemetry.targetAnglesRad[leg] = target;
   };
   if (impl_->script == 0) { // Stand
     for (size_t leg = 0; leg < 4; ++leg) setLegPose(leg, comRollCorrection, supportHip + comHipCorrection, supportKnee, 0.0f);
@@ -539,6 +547,7 @@ void JoltBridge::setRobotScript(int script) {
   impl_->script = std::clamp(script, 0, 3);
   impl_->scriptTime = 0.0f;
   impl_->settleTime = 0.0f;
+  impl_->motorBlend = 0.0f;
   impl_->motorsEnabled = false;
   for (const auto &actuator : impl_->rotaryActuators)
     actuator->SetMotorState(JPH::EMotorState::Off);
