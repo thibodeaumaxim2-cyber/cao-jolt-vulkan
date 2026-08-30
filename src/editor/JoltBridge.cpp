@@ -306,7 +306,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
     constexpr std::array<float, 4> walkOffsets{0.0f, 0.25f, 0.50f, 0.75f};
     constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
     const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
-    const float cycleDuration = impl_->script == 1 ? 2.40f : 1.05f;
+    const float cycleDuration = impl_->script == 1 ? 3.20f : 1.05f;
     auto &bodyInterface = impl_->physics->GetBodyInterface();
     for (size_t leg = 0; leg < 4; ++leg) {
       const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
@@ -380,7 +380,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
         state = 2;
         const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
-        hip = impl_->script == 1 ? supportHip + comHipCorrection + 0.08f * t : -0.19f + 0.43f * t;
+        hip = impl_->script == 1 ? supportHip + comHipCorrection + 0.05f * t : -0.19f + 0.43f * t;
         knee = supportKnee - (impl_->script == 1 ? -CaoLegGeometry::swingKneeAngle : 0.62f) * lift;
         ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
@@ -434,7 +434,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
       setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
   impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
-      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 2.40f : 1.05f), 1.0f) : 0.0f;
+      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 3.20f : 1.05f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 4, impl_->allocator.get(), impl_->jobs.get());
 
   // Active torso stabilization: use the measured Jolt attitude and angular
