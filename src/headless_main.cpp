@@ -22,7 +22,7 @@ static json runTrial(const StandingTuning &tuning, int script) {
   if (!torso) return {{"stable", false}, {"score", 1e9}};
   const Vec3 initial = torso->transform.position;
   float maxSpeed=0, maxDisplacement=0, minHeight=std::numeric_limits<float>::max();
-  float maxError=0; int saturated=0; float instabilityTime=-1.0f; json samples=json::array();
+  float maxError=0; int saturated=0; int swingSamples=0; float maxGaitCycle=0.0f; float instabilityTime=-1.0f; json samples=json::array();
   for (int i=0;i<steps;++i) {
     physics.step(scene, dt);
     const Vec3 p=torso->transform.position;
@@ -30,22 +30,28 @@ static json runTrial(const StandingTuning &tuning, int script) {
     minHeight=std::min(minHeight,p.y);
     const auto &m=physics.telemetry();
     maxSpeed=std::max(maxSpeed,m.torsoSpeedMps);
+    maxGaitCycle=std::max(maxGaitCycle,m.gaitCycle);
+    if (m.activeSwingLeg >= 0 || std::any_of(m.legState.begin(),m.legState.end(),[](int s){return s==2;})) ++swingSamples;
     for (const auto &leg:m.angleErrorRad) for(float e:leg) maxError=std::max(maxError,std::abs(e));
     saturated += static_cast<int>(std::count(m.torqueSaturated.begin(),m.torqueSaturated.end(),true));
     if (i % 4 == 0) samples.push_back({{"time_s",(i+1)*dt},{"torso_height_m",p.y},
       {"torso_speed_mps",m.torsoSpeedMps},{"horizontal_displacement_m",maxDisplacement},
-      {"max_joint_error_rad",maxError}});
+      {"max_joint_error_rad",maxError},{"gait_cycle",m.gaitCycle},
+      {"active_swing_leg",m.activeSwingLeg},{"swing_samples",swingSamples}});
     const bool unstable = m.torsoSpeedMps > 0.75f || maxDisplacement > 0.50f ||
                           p.y < 1.50f || maxError > 0.75f;
     if (unstable) { instabilityTime = (i+1)*dt; break; }
   }
+  if (script == 1 && swingSamples == 0) maxError = std::max(maxError, 2.0f);
   const float score=maxSpeed*2.0f+maxDisplacement*4.0f+
       std::max(0.0f,1.50f-minHeight)*3.0f+maxError+saturated*0.002f;
-  return {{"stable",maxSpeed<0.75f && maxDisplacement<0.20f && minHeight>1.50f},
+  return {{"stable",maxSpeed<0.75f && maxDisplacement<0.20f && minHeight>1.50f &&
+                   (script != 1 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"max_horizontal_displacement_m",maxDisplacement},
           {"min_torso_height_m",minHeight},{"max_joint_error_rad",maxError},
-          {"torque_saturated_samples",saturated},{"instability_time_s",instabilityTime},{"samples",samples},
+          {"torque_saturated_samples",saturated},{"instability_time_s",instabilityTime},
+          {"swing_samples",swingSamples},{"max_gait_cycle",maxGaitCycle},{"samples",samples},
           {"motor_frequency_hz",tuning.motorFrequencyHz},
           {"motor_damping",tuning.motorDamping},
           {"com_gain",tuning.comGain},{"velocity_gain",tuning.velocityGain}};
