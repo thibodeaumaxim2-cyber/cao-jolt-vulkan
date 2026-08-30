@@ -176,7 +176,7 @@ void JoltBridge::rebuild(Scene &scene) {
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, 2.11f, z, JPH::Vec3::sAxisX(),
                -0.75f, 0.75f, 0.0f, 85.0f);
       addHinge(prefix + " Hip", prefix + " Shin", x, 1.41f, z, JPH::Vec3::sAxisX(),
-               -1.30f, 0.15f, -0.35f, 75.0f);
+               -1.5708f, 0.15f, -0.35f, 75.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, 0.70f, z, JPH::Vec3::sAxisX(),
                -0.55f, 0.55f, 0.0f, 35.0f);
       ++leg;
