@@ -157,8 +157,12 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
-      settings.mMotorSettings.mSpringSettings.mFrequency = 10.0f;
-      settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
+      settings.mMotorSettings.mSpringSettings.mFrequency =
+          maxTorque >= CaoLegGeometry::hipPitchTorqueNm
+              ? CaoLegGeometry::hipPitchMotorFrequencyHz : 10.0f;
+      settings.mMotorSettings.mSpringSettings.mDamping =
+          maxTorque >= CaoLegGeometry::hipPitchTorqueNm
+              ? CaoLegGeometry::hipPitchMotorDamping : 1.0f;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
@@ -178,7 +182,7 @@ void JoltBridge::rebuild(Scene &scene) {
       addHinge("Torso", prefix + " Hip Roll", x, CaoLegGeometry::torsoHipHeight + 0.11f, z, JPH::Vec3::sAxisZ(),
                -0.35f, 0.35f, 0.0f, 55.0f);
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, CaoLegGeometry::torsoHipHeight, z, JPH::Vec3::sAxisX(),
-               -0.75f, 0.75f, 0.0f, 85.0f);
+               -0.75f, 0.75f, 0.0f, CaoLegGeometry::hipPitchTorqueNm);
       addHinge(prefix + " Hip", prefix + " Shin", x, CaoLegGeometry::kneeHeight, z, JPH::Vec3::sAxisX(),
                -1.5708f, 0.15f, 0.0f, 75.0f);
       addHinge(prefix + " Shin", prefix + " Foot", x, CaoLegGeometry::ankleHeight, z, JPH::Vec3::sAxisX(),
