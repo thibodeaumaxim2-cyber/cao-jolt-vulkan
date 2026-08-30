@@ -20,7 +20,8 @@ void Scene::buildQuadruped(){
     part(prefix+" Hip Roll", {x,2.22f,z}, {.22f,.26f,.32f});
     part(prefix+" Hip", {x,1.76f,z}, {.28f,.70f,.28f});
     part(prefix+" Shin", {x,1.06f,z}, {.24f,.70f,.24f});
-    // The 0.18 m high foot is centered at 0.09 m: its sole rests on ground.
-    part(prefix+" Foot", {x,.09f,z+.12f*end}, {.36f,.18f,.48f});
+    // Align the foot with the ankle hinge at y=0.70 and the floor at y=0.
+    // The foot is the lower terminal link in this prototype model.
+    part(prefix+" Foot", {x,.35f,z+.12f*end}, {.36f,.70f,.48f});
   }
 }
