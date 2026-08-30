@@ -140,6 +140,8 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.SetSliderAxis(JPH::Vec3::sAxisY());
       settings.mLimitsMin = minStroke; settings.mLimitsMax = maxStroke; // meters
       settings.mMotorSettings.SetForceLimit(maxForce); // N
+      settings.mMotorSettings.mSpringSettings.mFrequency = 10.0f;
+      settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
       JPH::Ref<JPH::SliderConstraint> actuator = new JPH::SliderConstraint(
           *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
@@ -167,6 +169,8 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
+      settings.mMotorSettings.mSpringSettings.mFrequency = 9.0f;
+      settings.mMotorSettings.mSpringSettings.mDamping = 1.0f;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
       actuator->SetMotorState(JPH::EMotorState::Position);
@@ -274,9 +278,11 @@ void JoltBridge::shutdown() {
 }
 
 void JoltBridge::setRobotScript(int script) {
-  if (!impl_) return;
+  if (!impl_ || !impl_->ready) return;
   impl_->script = std::clamp(script, 0, 3);
   impl_->scriptTime = 0.0f;
+  auto &bodies = impl_->physics->GetBodyInterface();
+  for (const auto &[id, body] : impl_->bodies) bodies.ActivateBody(body);
 }
 
 int JoltBridge::robotScript() const {
