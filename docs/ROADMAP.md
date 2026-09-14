@@ -6,6 +6,7 @@
 - Jolt rigid-body simulation and headless executable
 - Primitive creation, selection, transforms, pyramid demo, and JSON persistence
 - Linux build script and CI validation
+- CTest scene-model regression suite
 
 ## Next milestone: editor reliability
 

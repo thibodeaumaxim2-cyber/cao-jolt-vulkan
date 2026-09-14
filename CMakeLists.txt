@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(CAOJoltNative VERSION 1.0 LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
@@ -167,6 +169,14 @@ if(TARGET cao-headless)
 endif()
 if(TARGET cao-vulkan-renderer)
   add_dependencies(cao-vulkan-renderer cao-shaders)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(cao-scene-tests
+    tests/SceneTests.cpp
+    src/editor/Scene.cpp)
+  target_include_directories(cao-scene-tests PRIVATE src)
+  add_test(NAME cao-scene-tests COMMAND cao-scene-tests)
 endif()
 
 install(TARGETS cao-jolt cao-headless RUNTIME DESTINATION bin)
