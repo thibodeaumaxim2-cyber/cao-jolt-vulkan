@@ -1,6 +1,6 @@
 # CAO Jolt Native
 
-Standalone C++ replacement for the portfolio CAO 3D physics app. It has no PHP, browser, CDN, Three.js, or Rapier dependency.
+Standalone C++20/Vulkan replacement for the portfolio CAO 3D physics app. It has no PHP, browser, CDN, Three.js, or Rapier dependency.
 
 ## Features
 
@@ -11,11 +11,11 @@ Standalone C++ replacement for the portfolio CAO 3D physics app. It has no PHP, 
 - Configurable 2–12-level cube pyramid, paused Build and falling Demo.
 - Space/play/pause, automatic demo restart after the pyramid falls 50m or the world is inactive for 7 seconds.
 - JSON scene export/import and New scene.
-- Minimal dependency footprint: GLFW + OpenGL + nlohmann/json + compiled Jolt library.
+- Minimal dependency footprint: GLFW + Vulkan + Dear ImGui + nlohmann/json + compiled Jolt library.
 
 ## Build
 
-Install CMake, a C++20 compiler, and OpenGL development files. Jolt, GLFW, and nlohmann/json are fetched and compiled automatically by default. Then:
+Install CMake 3.20+, a C++20 compiler, Vulkan development files (including `glslc`), and GLFW prerequisites. Jolt, GLFW, Dear ImGui, and nlohmann/json are fetched and compiled automatically by default. Then:
 
 ```bash
 cmake -S . -B build
@@ -44,4 +44,10 @@ Left click selects. Right drag orbits. Middle drag pans. Wheel zooms. `W`, `E`, 
 
 ## Jolt integration
 
-`src/main.cpp` creates a `JPH::PhysicsSystem`, broad phase, object layer filters, body interface, shape settings and dynamic/static bodies. The render scene mirrors Jolt transforms each frame. Replace the placeholder OpenGL drawing backend with your preferred renderer without changing the physics/editor model.
+`src/editor/JoltBridge.cpp` creates the `JPH::PhysicsSystem`, broad phase, object-layer filters, body interface, shape settings, and dynamic/static bodies. The render scene mirrors Jolt transforms each frame. `src/renderer/VulkanRenderer.cpp` owns the Vulkan presentation path, while `cao-headless` provides a windowless simulation target for regression checks.
+
+## Project status
+
+The project is an active prototype moving toward a reusable native physics editor. The Vulkan path is the supported interactive renderer; the old OpenGL wording has been removed because there is currently no OpenGL application entry point in this repository.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the recommended development sequence.

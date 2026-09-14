@@ -31,6 +31,9 @@ class CaoBroadPhaseLayerInterface final : public JPH::BroadPhaseLayerInterface {
   JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer layer) const override {
     return layer == CaoObjectLayers::Static ? CaoBroadPhaseLayers::Static : CaoBroadPhaseLayers::Dynamic;
   }
+  const char *GetBroadPhaseLayerName(JPH::BroadPhaseLayer layer) const override {
+    return layer == CaoBroadPhaseLayers::Static ? "Static" : "Dynamic";
+  }
 };
 
 class CaoObjectVsBroadPhaseFilter final : public JPH::ObjectVsBroadPhaseLayerFilter {
