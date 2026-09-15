@@ -1,0 +1,21 @@
+name: native-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build libglfw3-dev libvulkan-dev glslc
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCAO_USE_MUJOCO=ON
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

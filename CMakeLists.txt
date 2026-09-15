@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CAOJoltNative VERSION 1.0 LANGUAGES CXX)
+project(CAOMuJoCoVulkan VERSION 1.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -12,9 +12,14 @@ set(JOLT_LIBRARY "" CACHE FILEPATH "Full path to the compiled Jolt library")
 set(JOLT_INCLUDE_DIR "" CACHE PATH "Directory containing Jolt/Jolt.h")
 option(CAO_FETCH_DEPENDENCIES "Fetch GLFW and nlohmann/json if unavailable" ON)
 option(CAO_FETCH_JOLT "Download and compile Jolt when no local Jolt is supplied" ON)
+option(CAO_USE_MUJOCO "Use MuJoCo as the articulated-robot physics backend" ON)
 set(CAO_RENDERER "VULKAN" CACHE STRING "Renderer backend (currently VULKAN)")
 set_property(CACHE CAO_RENDERER PROPERTY STRINGS VULKAN)
 set(JOLT_GIT_TAG "v5.6.0" CACHE STRING "Jolt Physics git tag")
+
+if(NOT CAO_USE_MUJOCO)
+  message(FATAL_ERROR "The active CAO build uses MuJoCo. Reconfigure with -DCAO_USE_MUJOCO=ON.")
+endif()
 
 if(NOT CAO_RENDERER STREQUAL "VULKAN")
   message(FATAL_ERROR "Unsupported CAO_RENDERER='${CAO_RENDERER}'. The supported renderer is VULKAN.")
@@ -55,6 +60,27 @@ if(NOT nlohmann_json_FOUND AND CAO_FETCH_DEPENDENCIES)
   FetchContent_MakeAvailable(json)
 endif()
 
+if(CAO_USE_MUJOCO)
+  # MuJoCo provides the articulated contact solver and actuator model. Its
+  # renderer is intentionally disabled: CAO continues to own presentation
+  # through Vulkan.
+  set(MUJOCO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(MUJOCO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MUJOCO_BUILD_SIMULATE OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(mujoco
+    GIT_REPOSITORY https://github.com/google-deepmind/mujoco.git
+    GIT_TAG 3.3.7
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(mujoco)
+  if(NOT TARGET mujoco)
+    message(FATAL_ERROR "MuJoCo did not provide the expected 'mujoco' target")
+  endif()
+  # MuJoCo 3.3.7 promotes warnings from newer GCC toolchains to errors. Keep
+  # its warnings visible, but do not let third-party diagnostics break CAO.
+  get_target_property(CAO_MUJOCO_COMPILE_OPTIONS mujoco COMPILE_OPTIONS)
+  list(REMOVE_ITEM CAO_MUJOCO_COMPILE_OPTIONS -Werror)
+  set_property(TARGET mujoco PROPERTY COMPILE_OPTIONS "${CAO_MUJOCO_COMPILE_OPTIONS}")
+else()
 if(JOLT_ROOT)
   list(PREPEND CMAKE_PREFIX_PATH "${JOLT_ROOT}")
 endif()
@@ -100,6 +126,7 @@ if(NOT TARGET Jolt::Jolt)
   add_library(Jolt::Jolt UNKNOWN IMPORTED)
   set_target_properties(Jolt::Jolt PROPERTIES IMPORTED_LOCATION "${JOLT_LIBRARY}" INTERFACE_INCLUDE_DIRECTORIES "${JOLT_INCLUDE_DIR}")
 endif()
+endif()
 
 if(NOT TARGET glfw AND NOT TARGET glfw3)
   message(FATAL_ERROR "GLFW was not found and CAO_FETCH_DEPENDENCIES is OFF")
@@ -113,11 +140,12 @@ if(CAO_RENDERER STREQUAL "VULKAN")
   add_library(cao-editor-core
     src/editor/Scene.cpp
     src/editor/Picking.cpp
-    src/editor/JoltBridge.cpp
+    src/editor/MuJoCoBridge.cpp
     src/editor/UiController.cpp
     src/editor/RobotExport.cpp
     src/editor/RobotRecorder.cpp)
   target_include_directories(cao-editor-core PUBLIC src)
+  target_compile_definitions(cao-editor-core PRIVATE CAO_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_library(cao-vulkan-renderer
     src/renderer/VulkanRenderer.cpp
     src/renderer/ShaderLoader.cpp
@@ -138,11 +166,15 @@ else()
 endif()
 
 if(CAO_RENDERER STREQUAL "VULKAN")
-  target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_VULKAN=1)
-  target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt nlohmann_json::nlohmann_json)
+  target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_VULKAN=1 CAO_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  if(CAO_USE_MUJOCO)
+    target_link_libraries(cao-editor-core PUBLIC mujoco nlohmann_json::nlohmann_json)
+  else()
+    target_link_libraries(cao-editor-core PUBLIC Jolt::Jolt nlohmann_json::nlohmann_json)
+  endif()
   target_link_libraries(cao-vulkan-renderer PUBLIC Vulkan::Vulkan cao-editor-core)
   target_link_libraries(cao-jolt PRIVATE Vulkan::Vulkan ${CAO_GLFW_TARGET}
-    nlohmann_json::nlohmann_json Jolt::Jolt cao-editor-core cao-vulkan-renderer cao-imgui)
+    nlohmann_json::nlohmann_json cao-editor-core cao-vulkan-renderer cao-imgui)
 else()
   target_compile_definitions(cao-jolt PRIVATE CAO_RENDERER_OPENGL=1)
   target_link_libraries(cao-jolt PRIVATE OpenGL::GL ${CAO_GLFW_TARGET}
@@ -161,7 +193,14 @@ find_program(GLSLC_EXECUTABLE glslc REQUIRED)
 add_custom_target(cao-shaders ALL
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.vert -o ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/cad.frag -o ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
-  DEPENDS assets/shaders/cad.vert assets/shaders/cad.frag)
+  COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/visible.vert -o ${CMAKE_CURRENT_BINARY_DIR}/visible.vert.spv
+  COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/visible.frag -o ${CMAKE_CURRENT_BINARY_DIR}/visible.frag.spv
+  DEPENDS
+    assets/shaders/cad.vert
+    assets/shaders/cad.frag
+    assets/shaders/visible.vert
+    assets/shaders/visible.frag
+  COMMENT "Compiling Vulkan shaders")
 
 add_dependencies(cao-jolt cao-shaders)
 if(TARGET cao-headless)
@@ -177,10 +216,21 @@ if(BUILD_TESTING)
     src/editor/Scene.cpp)
   target_include_directories(cao-scene-tests PRIVATE src)
   add_test(NAME cao-scene-tests COMMAND cao-scene-tests)
+  add_executable(cao-equilibrium-policy-tests tests/EquilibriumPolicyTests.cpp)
+  target_include_directories(cao-equilibrium-policy-tests PRIVATE src)
+  add_test(NAME cao-equilibrium-policy-tests COMMAND cao-equilibrium-policy-tests)
+  if(CAO_USE_MUJOCO)
+    add_test(NAME cao-mujoco-walk-smoke COMMAND cao-headless walk --quick)
+    add_test(NAME cao-mujoco-tripod-smoke COMMAND cao-headless tripod --quick)
+    add_test(NAME cao-mujoco-biped-stand-smoke COMMAND cao-headless biped --quick)
+    add_test(NAME cao-unitree-h1-import-smoke COMMAND cao-headless h1 --quick)
+  endif()
 endif()
 
 install(TARGETS cao-jolt cao-headless RUNTIME DESTINATION bin)
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/cad.vert.spv
   ${CMAKE_CURRENT_BINARY_DIR}/cad.frag.spv
+  ${CMAKE_CURRENT_BINARY_DIR}/visible.vert.spv
+  ${CMAKE_CURRENT_BINARY_DIR}/visible.frag.spv
   DESTINATION share/cao-jolt/shaders)

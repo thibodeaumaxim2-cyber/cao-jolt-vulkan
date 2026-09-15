@@ -4,14 +4,16 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
-#include "editor/JoltBridge.hpp"
+#include "editor/MuJoCoBridge.hpp"
 #include "editor/Scene.hpp"
+#include "editor/ScenePersistence.hpp"
 #include "editor/RobotExport.hpp"
 #include "editor/RobotRecorder.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <cstdint>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -22,12 +24,17 @@
 
 static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
 static bool gDragging = false, gPanning = false, gSimulationRunning = false;
+static bool gFramebufferResized = false;
 static int gTintMode = 0;
-static bool gBuildRequested = false, gDemoRequested = false, gUiReady = false;
+static bool gBuildRequested = false, gBuildBipedRequested = false, gBuildUnitreeH1Requested = false, gDemoRequested = false, gSafeWalkRequested = false, gNewSceneRequested = false, gUiReady = false;
 static int gCreatePrimitive = -1;
 static uint32_t gSelectedId = 1;
-static int gRobotScript = 0;
+static int gRobotScript = 1; // Walk is the default interactive motion.
 static bool gDeleteRequested = false, gPhysicsRebuildRequested = false;
+static bool gSaveRequested = false, gLoadRequested = false;
+static std::string gSceneStatus;
+static bool gSceneStatusError = false;
+static bool gShowToolbar = true, gShowObjectTree = true, gShowProperties = true;
 static bool gRobotParametersExported = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *window, double x, double y) {
@@ -59,6 +66,12 @@ static void key(GLFWwindow *window, int key, int scancode, int action, int mods)
     gBuildRequested = true;
   } else if (key == GLFW_KEY_D) {
     gDemoRequested = true;
+  } else if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_S) {
+    gSaveRequested = true;
+  } else if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_O) {
+    gLoadRequested = true;
+  } else if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_N) {
+    gNewSceneRequested = true;
   }
 }
 
@@ -67,6 +80,7 @@ static void scroll(GLFWwindow *window, double x, double y) {
   if (gUiReady && ImGui::GetIO().WantCaptureMouse) return;
   gZoom = std::clamp(gZoom * (1.0f + static_cast<float>(y) * 0.10f), 0.35f, 2.5f);
 }
+static void framebufferSize(GLFWwindow *, int, int) { gFramebufferResized = true; }
 
 static void check(VkResult result, const char *what) {
   if (result != VK_SUCCESS)
@@ -74,6 +88,59 @@ static void check(VkResult result, const char *what) {
 }
 
 struct Vertex { float position[3]; float color[3]; };
+#pragma pack(push, 1)
+struct StlTriangle { float normal[3]; float vertices[9]; uint16_t attribute; };
+#pragma pack(pop)
+static_assert(sizeof(StlTriangle) == 50, "Binary STL triangle layout must be 50 bytes");
+
+static const char *unitreeH1MeshName(const std::string &body) {
+  static const std::array<std::pair<const char *, const char *>, 20> names{{
+      {"pelvis", "pelvis.STL"}, {"left_hip_yaw_link", "left_hip_yaw_link.STL"},
+      {"left_hip_roll_link", "left_hip_roll_link.STL"}, {"left_hip_pitch_link", "left_hip_pitch_link.STL"},
+      {"left_knee_link", "left_knee_link.STL"}, {"left_ankle_link", "left_ankle_link.STL"},
+      {"right_hip_yaw_link", "right_hip_yaw_link.STL"}, {"right_hip_roll_link", "right_hip_roll_link.STL"},
+      {"right_hip_pitch_link", "right_hip_pitch_link.STL"}, {"right_knee_link", "right_knee_link.STL"},
+      {"right_ankle_link", "right_ankle_link.STL"}, {"torso_link", "torso_link.STL"},
+      {"left_shoulder_pitch_link", "left_shoulder_pitch_link.STL"}, {"left_shoulder_roll_link", "left_shoulder_roll_link.STL"},
+      {"left_shoulder_yaw_link", "left_shoulder_yaw_link.STL"}, {"left_elbow_link_ball_hand", "left_elbow_link_ball_hand.STL"},
+      {"right_shoulder_pitch_link", "right_shoulder_pitch_link.STL"}, {"right_shoulder_roll_link", "right_shoulder_roll_link.STL"},
+      {"right_shoulder_yaw_link", "right_shoulder_yaw_link.STL"}, {"right_elbow_link_ball_hand", "right_elbow_link_ball_hand.STL"}
+  }};
+  for (const auto &[link, mesh] : names) if (body == link) return mesh;
+  return nullptr;
+}
+
+static bool appendBinaryStl(const std::filesystem::path &path,
+                            const std::array<float, 3> &color,
+                            std::vector<Vertex> &vertices,
+                            std::vector<uint32_t> &indices,
+                            uint32_t &firstIndex, uint32_t &indexCount) {
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file) return false;
+  const std::streamsize size = file.tellg();
+  if (size < 84) return false;
+  file.seekg(80);
+  uint32_t triangleCount = 0;
+  file.read(reinterpret_cast<char *>(&triangleCount), sizeof(triangleCount));
+  if (!file || static_cast<uint64_t>(triangleCount) * sizeof(StlTriangle) + 84u != static_cast<uint64_t>(size)) return false;
+  firstIndex = static_cast<uint32_t>(indices.size());
+  indexCount = triangleCount * 3u;
+  vertices.reserve(vertices.size() + indexCount);
+  indices.reserve(indices.size() + indexCount);
+  for (uint32_t triangle = 0; triangle < triangleCount; ++triangle) {
+    StlTriangle facet{};
+    file.read(reinterpret_cast<char *>(&facet), sizeof(facet));
+    if (!file) return false;
+    for (int vertex = 0; vertex < 3; ++vertex) {
+      const uint32_t index = static_cast<uint32_t>(vertices.size());
+      const float *position = facet.vertices + vertex * 3;
+      // Unitree/MuJoCo uses Z-up; CAO's renderer is Y-up.
+      vertices.push_back({{position[0], position[2], position[1]}, {color[0], color[1], color[2]}});
+      indices.push_back(index);
+    }
+  }
+  return true;
+}
 struct Push { float mvp[16]; float tint[4]; };
 struct Mat4 { float v[16]{}; };
 static Mat4 identity() { Mat4 m{}; m.v[0]=m.v[5]=m.v[10]=m.v[15]=1.0f; return m; }
@@ -143,13 +210,23 @@ int main() {
   try {
     if (!glfwInit()) return 1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(1280, 800, "Jolt Robot Simulator - Triangle", nullptr, nullptr);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+    glfwWindowHint(GLFW_MAXIMIZED, GLFW_FALSE);
+    GLFWwindow *window = glfwCreateWindow(1280, 800, "CAO Hexapod Simulator", nullptr, nullptr);
     if (!window) throw std::runtime_error("Cannot create window");
-    JoltBridge physics;
+    // Reinforce the native window-manager affordances after creation. Some
+    // Linux compositors restore prior window state unless these are explicit.
+    glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_TRUE);
+    glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+    glfwRestoreWindow(window);
+    glfwSetWindowSizeLimits(window, 720, 520, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    MuJoCoBridge physics;
     physics.initialize();
     Scene scene;
     scene.buildQuadruped();
     physics.rebuild(scene);
+    physics.setRobotScript(gRobotScript);
     RobotFrameRecorder frameRecorder{5.0f};
     bool simulationWasRunning = false;
     bool frameRecordingSaved = false;
@@ -158,11 +235,12 @@ int main() {
     glfwSetMouseButtonCallback(window, mouseButton);
     glfwSetScrollCallback(window, scroll);
     glfwSetKeyCallback(window, key);
+    glfwSetFramebufferSizeCallback(window, framebufferSize);
 
     uint32_t extensionCount = 0;
     const char **extensions = glfwGetRequiredInstanceExtensions(&extensionCount);
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app.pApplicationName = "CAO Jolt Vulkan";
+    app.pApplicationName = "CAO MuJoCo Vulkan";
     app.apiVersion = VK_API_VERSION_1_0;
     VkInstanceCreateInfo instanceInfo{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     instanceInfo.pApplicationInfo = &app;
@@ -306,18 +384,21 @@ int main() {
     depthState.depthTestEnable = VK_TRUE; depthState.depthWriteEnable = VK_TRUE; depthState.depthCompareOp = VK_COMPARE_OP_LESS;
     VkPipelineColorBlendAttachmentState blendAttachment{}; blendAttachment.colorWriteMask=VK_COLOR_COMPONENT_R_BIT|VK_COLOR_COMPONENT_G_BIT|VK_COLOR_COMPONENT_B_BIT|VK_COLOR_COMPONENT_A_BIT;
     VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blend.attachmentCount=1; blend.pAttachments=&blendAttachment;
+    const VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicState{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamicState.dynamicStateCount = 2; dynamicState.pDynamicStates = dynamicStates;
     VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipelineInfo.stageCount=2; pipelineInfo.pStages=stages; pipelineInfo.pVertexInputState=&vertexInput; pipelineInfo.pInputAssemblyState=&assembly;
     pipelineInfo.pViewportState=&viewportState; pipelineInfo.pRasterizationState=&raster; pipelineInfo.pMultisampleState=&multisample;
-    pipelineInfo.pColorBlendState=&blend; pipelineInfo.pDepthStencilState=&depthState; pipelineInfo.layout=layout; pipelineInfo.renderPass=renderPass;
+    pipelineInfo.pColorBlendState=&blend; pipelineInfo.pDepthStencilState=&depthState; pipelineInfo.pDynamicState=&dynamicState; pipelineInfo.layout=layout; pipelineInfo.renderPass=renderPass;
     VkPipeline pipeline=VK_NULL_HANDLE; check(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pipelineInfo,nullptr,&pipeline),"graphics pipeline");
     vkDestroyShaderModule(device, fragmentShader, nullptr); vkDestroyShaderModule(device, vertexShader, nullptr);
 
     // CAO scene geometry: a reusable cube mesh plus a separate indexed grid.
-    // Every pyramid object is drawn independently, so the Jolt bridge can move it.
+    // Every scene object is drawn independently, so the MuJoCo bridge can move it.
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    struct DrawItem { uint32_t firstIndex; uint32_t indexCount; uint32_t objectId; };
+    struct DrawItem { uint32_t firstIndex; uint32_t indexCount; uint32_t objectId; bool mesh; };
     std::vector<DrawItem> objectDraws;
 
     auto addBlock = [&](const std::array<float, 3> &color, uint32_t objectId) {
@@ -343,7 +424,20 @@ int main() {
           firstVertex+2, firstVertex+6, firstVertex+7, firstVertex+7, firstVertex+3, firstVertex+2,
           firstVertex+3, firstVertex+7, firstVertex+4, firstVertex+4, firstVertex, firstVertex+3
       });
-      objectDraws.push_back({firstIndex, 36u, objectId});
+      objectDraws.push_back({firstIndex, 36u, objectId, false});
+    };
+    auto addUnitreeH1Mesh = [&](const SceneObject &object) {
+      const char *meshName = unitreeH1MeshName(object.name);
+      if (!meshName) return false;
+      const auto path = std::filesystem::path(CAO_SOURCE_DIR) / "third_party" / "unitree_mujoco" /
+          "unitree_robots" / "h1" / "assets" / meshName;
+      const std::array<float, 3> color = object.name == "torso_link" || object.name == "pelvis"
+          ? std::array<float, 3>{{0.78f, 0.80f, 0.84f}}
+          : std::array<float, 3>{{0.20f, 0.23f, 0.28f}};
+      uint32_t firstIndex = 0, indexCount = 0;
+      if (!appendBinaryStl(path, color, vertices, indices, firstIndex, indexCount)) return false;
+      objectDraws.push_back({firstIndex, indexCount, object.id, true});
+      return true;
     };
     auto addGridStrip = [&](float x0, float z0, float x1, float z1,
                             float width, const std::array<float, 3> &color) {
@@ -370,6 +464,8 @@ int main() {
     addGridStrip(-gridExtent, 0.0f, gridExtent, 0.0f, 0.025f, {{0.92f, 0.18f, 0.18f}});
     addGridStrip(0.0f, -gridExtent, 0.0f, gridExtent, 0.025f, {{0.18f, 0.76f, 0.32f}});
     const uint32_t gridIndexCount = static_cast<uint32_t>(indices.size());
+    const size_t sceneVertexBegin = vertices.size();
+    const size_t sceneIndexBegin = indices.size();
 
     const std::array<std::array<float, 3>, 3> layerColors{{
         {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
@@ -387,8 +483,12 @@ int main() {
       void *mapped=nullptr; check(vkMapMemory(device,outMemory,0,sourceSize,0,&mapped),"map buffer"); std::memcpy(mapped,source,sourceSize); vkUnmapMemory(device,outMemory);
     };
     constexpr size_t maxSceneObjects = 128;
-    const VkDeviceSize vertexCapacity = (vertices.size() + maxSceneObjects * 8u) * sizeof(Vertex);
-    const VkDeviceSize indexCapacity = (indices.size() + maxSceneObjects * 36u) * sizeof(uint32_t);
+    // The complete upstream H1 mesh set is about 615k triangles. Leave room
+    // for the real imported geometry without reallocating Vulkan buffers.
+    constexpr size_t h1MeshVertexCapacity = 2'100'000u;
+    constexpr size_t h1MeshIndexCapacity = 2'100'000u;
+    const VkDeviceSize vertexCapacity = std::max(vertices.size() + maxSceneObjects * 8u, h1MeshVertexCapacity) * sizeof(Vertex);
+    const VkDeviceSize indexCapacity = std::max(indices.size() + maxSceneObjects * 36u, h1MeshIndexCapacity) * sizeof(uint32_t);
     VkBuffer vertexBuffer=VK_NULL_HANDLE,indexBuffer=VK_NULL_HANDLE; VkDeviceMemory vertexMemory=VK_NULL_HANDLE,indexMemory=VK_NULL_HANDLE;
     buffer(vertexCapacity,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices.data(),vertices.size()*sizeof(Vertex),vertexBuffer,vertexMemory);
     buffer(indexCapacity,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,indices.data(),indices.size()*sizeof(uint32_t),indexBuffer,indexMemory);
@@ -396,6 +496,19 @@ int main() {
       void *mapped=nullptr;
       check(vkMapMemory(device,vertexMemory,0,vertices.size()*sizeof(Vertex),0,&mapped),"map vertices"); std::memcpy(mapped,vertices.data(),vertices.size()*sizeof(Vertex)); vkUnmapMemory(device,vertexMemory);
       check(vkMapMemory(device,indexMemory,0,indices.size()*sizeof(uint32_t),0,&mapped),"map indices"); std::memcpy(mapped,indices.data(),indices.size()*sizeof(uint32_t)); vkUnmapMemory(device,indexMemory);
+    };
+    auto rebuildSceneGeometry = [&] {
+      vertices.resize(sceneVertexBegin);
+      indices.resize(sceneIndexBegin);
+      objectDraws.clear();
+      for (const SceneObject &object : scene.objects()) {
+        if (scene.isUnitreeH1() && addUnitreeH1Mesh(object)) continue;
+        const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
+        addBlock(layerColors[layer], object.id);
+      }
+      if (vertices.size() > h1MeshVertexCapacity || indices.size() > h1MeshIndexCapacity)
+        throw std::runtime_error("Unitree H1 mesh set exceeds the reserved Vulkan scene buffer");
+      uploadSceneGeometry();
     };
 
     VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO}; poolInfo.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; poolInfo.queueFamilyIndex=family;
@@ -432,6 +545,57 @@ int main() {
     ImGui_ImplVulkan_CreateFontsTexture();
     gUiReady = true;
 
+    auto recreateSwapchain = [&] {
+      int resizedWidth = 0, resizedHeight = 0;
+      while (resizedWidth == 0 || resizedHeight == 0) {
+        glfwGetFramebufferSize(window, &resizedWidth, &resizedHeight);
+        if (resizedWidth == 0 || resizedHeight == 0) glfwWaitEvents();
+      }
+      check(vkDeviceWaitIdle(device), "wait for resize");
+      for (VkFramebuffer framebuffer : framebuffers) vkDestroyFramebuffer(device, framebuffer, nullptr);
+      vkDestroyImageView(device, depthView, nullptr); vkDestroyImage(device, depthImage, nullptr); vkFreeMemory(device, depthMemory, nullptr);
+      for (VkImageView view : views) vkDestroyImageView(device, view, nullptr);
+      VkSurfaceCapabilitiesKHR resizedCaps{}; vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &resizedCaps);
+      extent = resizedCaps.currentExtent.width == UINT32_MAX
+          ? VkExtent2D{std::clamp(uint32_t(resizedWidth), resizedCaps.minImageExtent.width, resizedCaps.maxImageExtent.width),
+                       std::clamp(uint32_t(resizedHeight), resizedCaps.minImageExtent.height, resizedCaps.maxImageExtent.height)}
+          : resizedCaps.currentExtent;
+      imageCount = std::max(2u, resizedCaps.minImageCount);
+      if (resizedCaps.maxImageCount) imageCount = std::min(imageCount, resizedCaps.maxImageCount);
+      const VkSwapchainKHR oldSwapchain = swapchain;
+      swapInfo.minImageCount = imageCount; swapInfo.imageExtent = extent; swapInfo.preTransform = resizedCaps.currentTransform; swapInfo.oldSwapchain = oldSwapchain;
+      check(vkCreateSwapchainKHR(device, &swapInfo, nullptr, &swapchain), "resized swapchain");
+      vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+      vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
+      images.resize(swapImageCount); vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, images.data());
+      views.resize(swapImageCount);
+      for (uint32_t i = 0; i < swapImageCount; ++i) {
+        VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; viewInfo.image = images[i]; viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; viewInfo.format = format.format;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; viewInfo.subresourceRange.levelCount = 1; viewInfo.subresourceRange.layerCount = 1;
+        check(vkCreateImageView(device, &viewInfo, nullptr, &views[i]), "resized image view");
+      }
+      depthImageInfo.extent = {extent.width, extent.height, 1};
+      check(vkCreateImage(device, &depthImageInfo, nullptr, &depthImage), "resized depth image");
+      VkMemoryRequirements requirements{}; vkGetImageMemoryRequirements(device, depthImage, &requirements);
+      VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; allocation.allocationSize = requirements.size;
+      allocation.memoryTypeIndex = memoryType(gpu, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      check(vkAllocateMemory(device, &allocation, nullptr, &depthMemory), "resized depth memory"); check(vkBindImageMemory(device, depthImage, depthMemory, 0), "resized depth bind");
+      VkImageViewCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; depthInfo.image = depthImage; depthInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; depthInfo.format = depth;
+      depthInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; depthInfo.subresourceRange.levelCount = 1; depthInfo.subresourceRange.layerCount = 1;
+      check(vkCreateImageView(device, &depthInfo, nullptr, &depthView), "resized depth view");
+      framebuffers.resize(swapImageCount);
+      for (uint32_t i = 0; i < swapImageCount; ++i) {
+        std::array<VkImageView, 2> attachments{{views[i], depthView}};
+        VkFramebufferCreateInfo info{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO}; info.renderPass = renderPass; info.attachmentCount = 2; info.pAttachments = attachments.data(); info.width = extent.width; info.height = extent.height; info.layers = 1;
+        check(vkCreateFramebuffer(device, &info, nullptr, &framebuffers[i]), "resized framebuffer");
+      }
+      vkFreeCommandBuffers(device, pool, static_cast<uint32_t>(commands.size()), commands.data());
+      commands.resize(swapImageCount); commandInfo.commandBufferCount = swapImageCount;
+      check(vkAllocateCommandBuffers(device, &commandInfo, commands.data()), "resized command buffers");
+      ImGui_ImplVulkan_SetMinImageCount(imageCount);
+      gFramebufferResized = false;
+    };
+
     Push drawPush{}; drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=drawPush.tint[3]=1;
     Mat4 cameraMvp{};
     auto updateCamera = [&] {
@@ -446,10 +610,13 @@ int main() {
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
+      if (gFramebufferResized) { recreateSwapchain(); continue; }
       ImGui_ImplVulkan_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
       if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-          if (ImGui::MenuItem("New scene")) gBuildRequested = true;
+          if (ImGui::MenuItem("Save scene", "Ctrl+S")) gSaveRequested = true;
+          if (ImGui::MenuItem("Load scene", "Ctrl+O")) gLoadRequested = true;
+          if (ImGui::MenuItem("New scene", "Ctrl+N")) gNewSceneRequested = true;
           if (ImGui::MenuItem("Exit")) glfwSetWindowShouldClose(window, GLFW_TRUE);
           ImGui::EndMenu();
         }
@@ -462,11 +629,18 @@ int main() {
         }
         if (ImGui::BeginMenu("Simulation")) {
           if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
+          if (ImGui::MenuItem("Start safe walk")) gSafeWalkRequested = true;
           if (ImGui::MenuItem("Reset quadruped", "B")) gBuildRequested = true;
+          if (ImGui::MenuItem("Build biped (stand)")) gBuildBipedRequested = true;
+          if (ImGui::MenuItem("Import Unitree H1 (paused)")) gBuildUnitreeH1Requested = true;
           if (ImGui::MenuItem("Drop robot", "D")) gDemoRequested = true;
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
+          if (ImGui::MenuItem("Toolbar", nullptr, &gShowToolbar)) {}
+          if (ImGui::MenuItem("Object tree", nullptr, &gShowObjectTree)) {}
+          if (ImGui::MenuItem("Properties", nullptr, &gShowProperties)) {}
+          ImGui::Separator();
           if (ImGui::MenuItem("Isometric")) { gYaw=0.55f; gPitch=-0.55f; gZoom=1.0f; gPanX=gPanY=0.0f; }
           if (ImGui::MenuItem("Top")) { gYaw=0.0f; gPitch=-1.25f; gZoom=0.85f; gPanX=gPanY=0.0f; }
           if (ImGui::MenuItem("Front")) { gYaw=0.0f; gPitch=0.0f; gZoom=0.9f; gPanX=gPanY=0.0f; }
@@ -475,14 +649,27 @@ int main() {
         }
         ImGui::EndMainMenuBar();
       }
-      ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_Always);
+      ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowBgAlpha(0.92f);
-      ImGui::Begin("CAO Toolbar", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+      if (gShowToolbar) ImGui::Begin("CAO Toolbar", &gShowToolbar, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+      if (gShowToolbar) {
       if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Build biped")) gBuildBipedRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Import Unitree H1")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
+      if (ImGui::Button("Start safe walk")) gSafeWalkRequested = true; ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
-      ImGui::TextDisabled("Quadruped: 16 rotary actuators | roll/pitch/knee/ankle: 55/85/75/35 N m");
-      const char *robotScripts[] = {"Stand", "Walk", "Trot", "Jump"};
+      ImGui::TextDisabled(scene.isUnitreeH1()
+          ? "Unitree H1: official MuJoCo dynamics | controller integration pending"
+          : scene.isBiped() ? "Biped: 8 rotary actuators | balance-verified standing pose"
+                            : "Hexapod: 24 rotary actuators | one-foot crawl gait");
+      if (!gSceneStatus.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, gSceneStatusError ? ImVec4(1.0f, 0.35f, 0.35f, 1.0f)
+                                                               : ImVec4(0.35f, 1.0f, 0.55f, 1.0f));
+        ImGui::TextWrapped("%s", gSceneStatus.c_str());
+        ImGui::PopStyleColor();
+      }
+      const char *robotScripts[] = {"Stand", "Crawl walk", "Tripod walk", "Fast crawl"};
       if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts))) {
         physics.setRobotScript(gRobotScript);
         gSimulationRunning = gRobotScript != 0;
@@ -493,16 +680,19 @@ int main() {
       ImGui::Text("Telemetry | torso %.3f m/s | cycle %.2f | swing leg %d",
                   robotTelemetry.torsoSpeedMps, robotTelemetry.gaitCycle,
                   robotTelemetry.activeSwingLeg);
+      ImGui::Text("Equilibrium AI: %.0f%% | walking %s",
+                  robotTelemetry.equilibriumScore * 100.0f,
+                  robotTelemetry.walkingAllowed ? "allowed" : "paused");
       ImGui::Text("Limits N m: roll %.0f | hip %.0f | knee %.0f | ankle %.0f",
                   robotTelemetry.torqueLimitsNm[0], robotTelemetry.torqueLimitsNm[1],
                   robotTelemetry.torqueLimitsNm[2], robotTelemetry.torqueLimitsNm[3]);
       float maxAngleError = 0.0f; int saturated = 0;
-      for (size_t leg = 0; leg < 4; ++leg)
-        for (size_t joint = 0; joint < 4; ++joint)
+      for (size_t leg = 0; leg < kRobotLegCount; ++leg)
+        for (size_t joint = 0; joint < kRobotJointsPerLeg; ++joint)
           maxAngleError = std::max(maxAngleError, std::abs(robotTelemetry.angleErrorRad[leg][joint]));
       for (bool value : robotTelemetry.torqueSaturated) if (value) ++saturated;
       constexpr float radiansToDegrees = 57.2957795f;
-      ImGui::Text("Tracking error: %.2f deg (%.3f rad) | torque-limited joints: %d/16",
+      ImGui::Text("Tracking error: %.2f deg (%.3f rad) | torque-limited joints: %d/24",
                   maxAngleError * radiansToDegrees, maxAngleError, saturated);
       const float commandedKneeDeg = robotTelemetry.targetAnglesRad[0][2] * radiansToDegrees;
       const float measuredKneeDeg = robotTelemetry.measuredAnglesRad[0][2] * radiansToDegrees;
@@ -510,7 +700,7 @@ int main() {
       ImGui::Text("Front-left knee command: %.1f deg", commandedKneeDeg);
       ImGui::Text("Front-left knee scene:  %.1f deg", measuredKneeDeg);
       ImGui::Text("Front-left knee error:   %.1f deg", kneeErrorDeg);
-      ImGui::TextDisabled("Scene values are measured from Jolt body transforms.");
+      ImGui::TextDisabled("Scene values are measured from MuJoCo geometry transforms.");
       if (robotTelemetry.activeSwingLeg >= 0)
         ImGui::Text("Swing assist: %.1f N", robotTelemetry.swingLiftForceN);
       if (ImGui::Button("Export robot JSON"))
@@ -521,19 +711,23 @@ int main() {
       else if (frameRecordingSaved)
         ImGui::TextDisabled("saved robot_recording.json");
       ImGui::End();
+      }
 
-      ImGui::SetNextWindowPos(ImVec2(12, 110), ImGuiCond_Always);
-      ImGui::SetNextWindowSize(ImVec2(235, 340), ImGuiCond_Always);
-      ImGui::Begin("Object tree", nullptr, ImGuiWindowFlags_NoCollapse);
+      ImGui::SetNextWindowPos(ImVec2(12, 420), ImGuiCond_FirstUseEver);
+      ImGui::SetNextWindowSize(ImVec2(235, 340), ImGuiCond_FirstUseEver);
+      if (gShowObjectTree) ImGui::Begin("Object tree", &gShowObjectTree, ImGuiWindowFlags_NoCollapse);
+      if (gShowObjectTree) {
       for (const SceneObject &object : scene.objects()) {
         const bool selected = object.id == gSelectedId;
         if (ImGui::Selectable(object.name.c_str(), selected)) gSelectedId = object.id;
       }
       ImGui::End();
+      }
 
-      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 270.0f, 34), ImGuiCond_Always);
-      ImGui::SetNextWindowSize(ImVec2(258, 0), ImGuiCond_Always);
-      ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoCollapse);
+      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 270.0f, 34), ImGuiCond_FirstUseEver);
+      ImGui::SetNextWindowSize(ImVec2(258, 0), ImGuiCond_FirstUseEver);
+      if (gShowProperties) ImGui::Begin("Properties", &gShowProperties, ImGuiWindowFlags_NoCollapse);
+      if (gShowProperties) {
       SceneObject *selected = scene.find(gSelectedId);
       if (!selected) {
         ImGui::TextDisabled("Select an object in the tree.");
@@ -557,11 +751,12 @@ int main() {
         if (ImGui::Button("Delete selected")) gDeleteRequested = true;
       }
       ImGui::End();
+      }
 
       ImGui::SetNextWindowPos(ImVec2(0, float(extent.height) - 42.0f), ImGuiCond_Always);
       ImGui::SetNextWindowSize(ImVec2(float(extent.width), 42), ImGuiCond_Always);
       ImGui::Begin("Taskbar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-      ImGui::Text("CAO Jolt Vulkan  |  %d objects  |  Orbit: left drag  Pan: middle drag  Zoom: wheel  |  %s",
+      ImGui::Text("CAO MuJoCo Vulkan  |  %d objects  |  Orbit: left drag  Pan: middle drag  Zoom: wheel  |  %s",
                   static_cast<int>(scene.objects().size()), gSimulationRunning ? "SIMULATION RUNNING" : "BUILD MODE");
       ImGui::End();
       ImGui::Render();
@@ -579,11 +774,77 @@ int main() {
       if (gPhysicsRebuildRequested) {
         physics.rebuild(scene); gPhysicsRebuildRequested = false;
       }
+      if (gSaveRequested) {
+        try {
+          saveScene(scene, "scene.cao.json");
+          gSceneStatus = "Saved scene.cao.json";
+          gSceneStatusError = false;
+        } catch (const std::exception &error) {
+          std::cerr << "Scene save failed: " << error.what() << '\n';
+          gSceneStatus = std::string("Save failed: ") + error.what();
+          gSceneStatusError = true;
+        }
+        gSaveRequested = false;
+      }
+      if (gLoadRequested) {
+        try {
+          loadScene(scene, "scene.cao.json");
+          physics.rebuild(scene);
+          physics.setRobotScript(gRobotScript);
+          gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+          uploadSceneGeometry();
+          gSimulationRunning = false;
+          gSceneStatus = "Loaded scene.cao.json";
+          gSceneStatusError = false;
+        } catch (const std::exception &error) {
+          std::cerr << "Scene load failed: " << error.what() << '\n';
+          gSceneStatus = std::string("Load failed: ") + error.what();
+          gSceneStatusError = true;
+        }
+        gLoadRequested = false;
+      }
+      if (gNewSceneRequested) {
+        scene.clear();
+        physics.rebuild(scene);
+        physics.setRobotScript(gRobotScript);
+        gSelectedId = 0;
+        gSimulationRunning = false;
+        gNewSceneRequested = false;
+        gSceneStatus = "Created a new empty scene";
+        gSceneStatusError = false;
+        uploadSceneGeometry();
+      }
+      if (gSafeWalkRequested) {
+        gRobotScript = 1;
+        scene.buildQuadruped();
+        physics.rebuild(scene);
+        physics.setRobotScript(gRobotScript);
+        gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+        uploadSceneGeometry();
+        gSimulationRunning = true;
+        gSafeWalkRequested = false;
+        gSceneStatus = "Safe walk started: one foot moves while five feet support.";
+        gSceneStatusError = false;
+      }
       if (gBuildRequested) {
-        scene.buildQuadruped(); physics.rebuild(scene); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
+        scene.buildQuadruped(); physics.rebuild(scene); physics.setRobotScript(gRobotScript); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
+      }
+      if (gBuildBipedRequested) {
+        scene.buildBiped(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+        gSimulationRunning = true; gBuildBipedRequested = false;
+        gSceneStatus = "Biped built: standing mode only until its COM-over-foot walk controller is implemented.";
+        gSceneStatusError = false;
+      }
+      if (gBuildUnitreeH1Requested) {
+        scene.buildUnitreeH1(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+        rebuildSceneGeometry(); gSimulationRunning = false; gBuildUnitreeH1Requested = false;
+        gSceneStatus = "Unitree H1 loaded with its original STL meshes and official MuJoCo model. It is paused until an H1 controller is integrated.";
+        gSceneStatusError = false;
       }
       if (gDemoRequested) {
-        scene.buildQuadruped(); physics.rebuild(scene); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
+        scene.buildQuadruped(); physics.rebuild(scene); physics.setRobotScript(gRobotScript); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
       }
       if (gSimulationRunning && !simulationWasRunning) {
         frameRecorder.start(gRobotScript);
@@ -592,7 +853,15 @@ int main() {
       }
       if (gSimulationRunning) {
         constexpr float simulationDeltaSeconds = 1.0f / 60.0f;
-        physics.step(scene, simulationDeltaSeconds);
+        // The articulated robot is considerably more stable when its motors
+        // and contacts are integrated at the same 240 Hz rate as the
+        // deterministic headless harness. Keep rendering and recording at
+        // 60 Hz, but advance the physics world in fixed-size substeps.
+        constexpr int physicsSubsteps = 4;
+        constexpr float physicsDeltaSeconds = simulationDeltaSeconds / physicsSubsteps;
+        for (int substep = 0; substep < physicsSubsteps; ++substep) {
+          physics.step(scene, physicsDeltaSeconds);
+        }
         frameRecorder.capture(scene, simulationDeltaSeconds, physics.telemetry());
       }
       if (frameRecorder.complete() && !frameRecordingWriteAttempted) {
@@ -602,16 +871,18 @@ int main() {
       simulationWasRunning = gSimulationRunning;
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
-      glfwSetWindowTitle(window, (std::string("CAO Jolt Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
+      glfwSetWindowTitle(window, (std::string("CAO MuJoCo Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
       check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
-      if (acquire==VK_ERROR_OUT_OF_DATE_KHR) continue; check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
+      if (acquire==VK_ERROR_OUT_OF_DATE_KHR) { recreateSwapchain(); continue; } check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
       VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; check(vkBeginCommandBuffer(commands[image],&begin),"begin command");
       std::array<VkClearValue, 2> clear{}; clear[0].color={{0.025f,0.05f,0.11f,1}}; clear[1].depthStencil={1.0f,0};
       VkRenderPassBeginInfo render{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO}; render.renderPass=renderPass; render.framebuffer=framebuffers[image]; render.renderArea.extent=extent; render.clearValueCount=static_cast<uint32_t>(clear.size()); render.pClearValues=clear.data();
       vkCmdBeginRenderPass(commands[image],&render,VK_SUBPASS_CONTENTS_INLINE);
       vkCmdBindPipeline(commands[image],VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline); VkDeviceSize offset=0;
       vkCmdBindVertexBuffers(commands[image],0,1,&vertexBuffer,&offset); vkCmdBindIndexBuffer(commands[image],indexBuffer,0,VK_INDEX_TYPE_UINT32);
+      VkViewport dynamicViewport{0, 0, float(extent.width), float(extent.height), 0, 1}; VkRect2D dynamicScissor{{0, 0}, extent};
+      vkCmdSetViewport(commands[image], 0, 1, &dynamicViewport); vkCmdSetScissor(commands[image], 0, 1, &dynamicScissor);
       if (gTintMode == 0) { drawPush.tint[0]=drawPush.tint[1]=drawPush.tint[2]=1.0f; }
       if (gTintMode == 1) { drawPush.tint[0]=1.0f; drawPush.tint[1]=0.82f; drawPush.tint[2]=0.28f; }
       if (gTintMode == 2) { drawPush.tint[0]=0.45f; drawPush.tint[1]=0.92f; drawPush.tint[2]=1.0f; }
@@ -622,7 +893,11 @@ int main() {
         const SceneObject *object = scene.find(draw.objectId);
         if (!object) continue;
         const Transform &t = object->transform;
-        setMvp(multiply(translate(t.position.x, t.position.y, t.position.z), multiply(rotateZ(t.rotation.z), multiply(rotateY(t.rotation.y), multiply(rotateX(t.rotation.x), scale(t.scale.x, t.scale.y, t.scale.z))))));
+        const Mat4 rotation = multiply(rotateZ(t.rotation.z), multiply(rotateY(t.rotation.y), rotateX(t.rotation.x)));
+        const Mat4 model = draw.mesh
+            ? multiply(translate(t.position.x, t.position.y, t.position.z), rotation)
+            : multiply(translate(t.position.x, t.position.y, t.position.z), multiply(rotation, scale(t.scale.x, t.scale.y, t.scale.z)));
+        setMvp(model);
         vkCmdPushConstants(commands[image],layout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(Push),&drawPush);
         vkCmdDrawIndexed(commands[image], draw.indexCount, 1, draw.firstIndex, 0, 0);
       }
@@ -631,7 +906,9 @@ int main() {
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
       check(vkQueueSubmit(queue,1,&submit,fence),"submit"); VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-      present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image; vkQueuePresentKHR(queue,&present);
+      present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image;
+      const VkResult presentResult = vkQueuePresentKHR(queue,&present);
+      if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || gFramebufferResized) recreateSwapchain(); else check(presentResult, "present");
     }
     vkDeviceWaitIdle(device);
     gUiReady = false; ImGui_ImplVulkan_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext(); vkDestroyDescriptorPool(device,imguiPool,nullptr);

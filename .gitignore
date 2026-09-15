@@ -7,3 +7,8 @@ compile_commands.json
 *.swp
 core
 core.*
+# Local UI state and generated simulation artifacts.
+imgui.ini
+robot_recording.json
+robot_parameters.json
+headless_standing_result.json

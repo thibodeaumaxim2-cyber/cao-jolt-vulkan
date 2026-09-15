@@ -36,4 +36,14 @@ inline std::filesystem::path fragmentShaderPath(
   return shaderDirectory(executableDirectory) / "cad.frag.spv";
 }
 
+inline std::filesystem::path visibleVertexShaderPath(
+    const std::filesystem::path& executableDirectory = {}) {
+  return shaderDirectory(executableDirectory) / "visible.vert.spv";
+}
+
+inline std::filesystem::path visibleFragmentShaderPath(
+    const std::filesystem::path& executableDirectory = {}) {
+  return shaderDirectory(executableDirectory) / "visible.frag.spv";
+}
+
 } // namespace cao::vk

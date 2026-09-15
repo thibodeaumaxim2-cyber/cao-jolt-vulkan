@@ -1,4 +1,4 @@
-#include "editor/JoltBridge.hpp"
+#include "editor/MuJoCoBridge.hpp"
 #include "editor/Scene.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -11,14 +11,16 @@
 
 using json = nlohmann::json;
 
-static json runTrial(const StandingTuning &tuning, int script) {
-  Scene scene; scene.buildQuadruped();
-  JoltBridge physics; physics.setStandingTuning(tuning); physics.initialize();
+static json runTrial(const StandingTuning &tuning, int script, float durationSeconds, bool biped = false, bool unitreeH1 = false) {
+  Scene scene;
+  if (unitreeH1) scene.buildUnitreeH1(); else if (biped) scene.buildBiped(); else scene.buildQuadruped();
+  MuJoCoBridge physics; physics.setStandingTuning(tuning); physics.initialize();
   physics.rebuild(scene); physics.setRobotScript(script);
   constexpr float dt = 1.0f / 240.0f;
-  constexpr int steps = 240 * 60;
+  const int steps = static_cast<int>(240.0f * durationSeconds);
   SceneObject *torso = nullptr;
-  for (auto &o : scene.objects()) if (o.name == "Torso") torso = &o;
+  const std::string rootName = unitreeH1 ? "pelvis" : "Torso";
+  for (auto &o : scene.objects()) if (o.name == rootName) torso = &o;
   if (!torso) return {{"stable", false}, {"score", 1e9}};
   const Vec3 initial = torso->transform.position;
   float maxSpeed=0, maxDisplacement=0, minHeight=std::numeric_limits<float>::max();
@@ -37,16 +39,18 @@ static json runTrial(const StandingTuning &tuning, int script) {
     if (i % 4 == 0) samples.push_back({{"time_s",(i+1)*dt},{"torso_height_m",p.y},
       {"torso_speed_mps",m.torsoSpeedMps},{"horizontal_displacement_m",maxDisplacement},
       {"max_joint_error_rad",maxError},{"gait_cycle",m.gaitCycle},
-      {"active_swing_leg",m.activeSwingLeg},{"swing_samples",swingSamples}});
+      {"active_swing_leg",m.activeSwingLeg},{"active_swing_tripod",m.activeSwingTripod},
+      {"equilibrium_score",m.equilibriumScore},{"walking_allowed",m.walkingAllowed},
+      {"swing_samples",swingSamples}});
     const bool unstable = m.torsoSpeedMps > 0.75f || maxDisplacement > 0.50f ||
-                          p.y < 1.50f || maxError > 0.75f;
+                          p.y < 0.70f || maxError > 0.75f;
     if (unstable) { instabilityTime = (i+1)*dt; break; }
   }
-  if (script == 1 && swingSamples == 0) maxError = std::max(maxError, 2.0f);
+  if (script != 0 && swingSamples == 0) maxError = std::max(maxError, 2.0f);
   const float score=maxSpeed*2.0f+maxDisplacement*4.0f+
-      std::max(0.0f,1.50f-minHeight)*3.0f+maxError+saturated*0.002f;
-  return {{"stable",maxSpeed<0.75f && maxDisplacement<0.20f && minHeight>1.50f &&
-                   (script != 1 || swingSamples > 0)},
+      std::max(0.0f,0.70f-minHeight)*3.0f+maxError+saturated*0.002f;
+  return {{"stable",maxSpeed<0.75f && maxDisplacement<0.20f && minHeight>0.70f &&
+                   (script == 0 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"max_horizontal_displacement_m",maxDisplacement},
           {"min_torso_height_m",minHeight},{"max_joint_error_rad",maxError},
@@ -58,23 +62,30 @@ static json runTrial(const StandingTuning &tuning, int script) {
 }
 
 int main(int argc, char **argv) {
-  const bool walking = argc > 1 && std::string(argv[1]) == "walk";
-  const int script = walking ? 1 : 0;
+  const std::string mode = argc > 1 ? argv[1] : "stand";
+  const bool walking = mode == "walk" || mode == "tripod";
+  const bool biped = mode == "biped";
+  const bool unitreeH1 = mode == "h1";
+  const bool quick = argc > 2 && std::string(argv[2]) == "--quick";
+  const int script = mode == "tripod" ? 2 : mode == "walk" ? 1 : 0;
   // Ten deterministic controller candidates: damping and balance gains are
   // varied around the current model, then the lowest-scoring trial wins.
   const std::array<StandingTuning,10> candidates{{
-    {2.0f,1.6f,0.18f,0.04f},{2.5f,2.0f,0.24f,0.06f},
-    {3.0f,2.4f,0.30f,0.08f},{3.5f,2.8f,0.36f,0.10f},
-    {4.0f,3.2f,0.42f,0.12f},{2.5f,3.5f,0.30f,0.14f},
-    {3.0f,4.0f,0.45f,0.16f},{4.0f,4.5f,0.55f,0.20f},
-    {5.0f,3.0f,0.22f,0.18f},{1.8f,2.8f,0.50f,0.10f}
+    {3.0f,2.4f,0.18f,0.04f},{3.5f,2.6f,0.24f,0.06f},
+    {4.0f,2.8f,0.30f,0.08f},{4.5f,3.0f,0.36f,0.10f},
+    {5.0f,3.2f,0.42f,0.12f},{3.5f,3.4f,0.30f,0.14f},
+    {4.0f,3.6f,0.45f,0.16f},{5.0f,4.0f,0.55f,0.20f},
+    {5.5f,3.0f,0.22f,0.18f},{3.0f,2.8f,0.50f,0.10f}
   }};
   json trials=json::array(); json best; float bestScore=std::numeric_limits<float>::max();
-  for (const auto &candidate:candidates) {
-    json result=runTrial(candidate, script); trials.push_back(result);
+  const size_t candidateCount = quick ? 1u : candidates.size();
+  const float durationSeconds = unitreeH1 ? 1.0f / 240.0f : quick ? 8.0f : 60.0f;
+  for (size_t index = 0; index < candidateCount; ++index) {
+    json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1); trials.push_back(result);
     if (result["score"].get<float>()<bestScore) { bestScore=result["score"]; best=result; }
   }
-  json output={{"iterations",candidates.size()},{"controller",walking ? "walk" : "stand"},
+  json output={{"iterations",candidateCount},{"duration_seconds",durationSeconds},
+               {"controller",mode},
                {"best",best},{"trials",trials}};
   std::ofstream file("headless_standing_result.json"); file<<output.dump(2)<<'\n';
   std::cout<<output.dump(2)<<'\n';

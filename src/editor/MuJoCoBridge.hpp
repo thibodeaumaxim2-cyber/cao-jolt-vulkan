@@ -25,7 +25,7 @@ struct RobotTelemetry {
   float equilibriumScore = 0.0f;
   bool walkingAllowed = false;
   float swingLiftForceN = 0.0f;
-  std::array<int, kRobotLegCount> legState{}; // 0 stance, 1 unload, 2 swing, 3 place
+  std::array<int, kRobotLegCount> legState{};
   std::array<std::array<float, kRobotJointsPerLeg>, kRobotLegCount> targetAnglesRad{};
   std::array<float, kRobotLegCount> liftAssistForceN{};
   std::array<std::array<float, kRobotJointsPerLeg>, kRobotLegCount> measuredAnglesRad{};
@@ -33,15 +33,17 @@ struct RobotTelemetry {
   std::array<float, kRobotActuatorCount> estimatedTorqueDemandNm{};
   std::array<bool, kRobotActuatorCount> torqueSaturated{};
   std::array<float, kRobotLegCount> footFriction{};
-  std::array<float, 4> torqueLimitsNm{{55.0f, 85.0f, 75.0f, 35.0f}};
+  std::array<float, 4> torqueLimitsNm{{260.0f, 620.0f, 500.0f, 300.0f}};
 };
 
-class JoltBridge {
+// Owns MuJoCo's model and simulation data. Vulkan remains responsible for
+// drawing the synchronized Scene transforms.
+class MuJoCoBridge {
  public:
-  JoltBridge();
-  ~JoltBridge();
-  JoltBridge(const JoltBridge&) = delete;
-  JoltBridge& operator=(const JoltBridge&) = delete;
+  MuJoCoBridge();
+  ~MuJoCoBridge();
+  MuJoCoBridge(const MuJoCoBridge&) = delete;
+  MuJoCoBridge& operator=(const MuJoCoBridge&) = delete;
 
   void initialize();
   void rebuild(Scene&);

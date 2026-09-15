@@ -11,13 +11,18 @@ struct SceneObject { uint32_t id=0; Primitive primitive=Primitive::Box; std::str
 class Scene {
  public:
   SceneObject& add(Primitive p,const Transform&t={});
+  SceneObject& addWithId(uint32_t id, Primitive p, const Transform &t = {});
   void erase(uint32_t id);
   SceneObject* find(uint32_t id);
   void buildPyramid(int levels,bool dynamic=true);
   void buildQuadruped();
+  void buildBiped();
+  void buildUnitreeH1();
   bool isQuadruped() const{return quadruped_;}
+  bool isBiped() const{return biped_;}
+  bool isUnitreeH1() const{return unitreeH1_;}
   void clear();
   const std::vector<SceneObject>& objects()const{return objects_;}
   std::vector<SceneObject>& objects(){return objects_;}
- private: uint32_t nextId_=1; bool quadruped_=false; std::vector<SceneObject> objects_;
+ private: uint32_t nextId_=1; bool quadruped_=false; bool biped_=false; bool unitreeH1_=false; std::vector<SceneObject> objects_;
 };

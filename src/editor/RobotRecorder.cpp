@@ -40,8 +40,11 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
       {"telemetry", {
           {"motion_script", telemetry.motionScript},
           {"active_swing_leg", telemetry.activeSwingLeg},
+          {"active_swing_tripod", telemetry.activeSwingTripod},
           {"gait_cycle", telemetry.gaitCycle},
           {"torso_speed_mps", telemetry.torsoSpeedMps},
+          {"equilibrium_score", telemetry.equilibriumScore},
+          {"walking_allowed", telemetry.walkingAllowed},
           {"target_angles_rad", telemetry.targetAnglesRad},
           {"measured_angles_rad", telemetry.measuredAnglesRad},
           {"angle_error_rad", telemetry.angleErrorRad},

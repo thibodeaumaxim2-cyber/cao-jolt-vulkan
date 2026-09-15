@@ -2,6 +2,7 @@
 #include "JoltLayers.hpp"
 #include "LegGeometry.hpp"
 #include "BalanceModel.hpp"
+#include "EquilibriumPolicy.hpp"
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Factory.h>
@@ -20,6 +21,11 @@
 #include <thread>
 #include <unordered_map>
 
+namespace {
+constexpr float kPlantedPawFriction = 2.10f;
+constexpr float kSwingPawFriction = 0.08f;
+}
+
 struct JoltBridge::Impl {
   bool ready = false;
   CaoBroadPhaseLayerInterface broadPhaseLayers;
@@ -35,13 +41,14 @@ struct JoltBridge::Impl {
   float scriptTime = 0.0f;
   JPH::BodyID ground;
   JPH::BodyID torso;
-  std::array<JPH::BodyID, 4> feet{};
-  std::array<JPH::BodyID, 4> shins{};
+  std::array<JPH::BodyID, kRobotLegCount> feet{};
+  std::array<JPH::BodyID, kRobotLegCount> shins{};
   RobotTelemetry telemetry;
   StandingTuning tuning;
   bool motorsEnabled = false;
   float settleTime = 0.0f;
   float motorBlend = 0.0f;
+  FastEquilibriumPolicy equilibriumPolicy;
 };
 
 JoltBridge::JoltBridge() : impl_(std::make_unique<Impl>()) {}
@@ -81,6 +88,7 @@ void JoltBridge::rebuild(Scene &scene) {
   impl_->torso = JPH::BodyID();
   impl_->motorsEnabled = false;
   impl_->settleTime = 0.0f;
+  impl_->equilibriumPolicy.reset(false);
 
   if (!impl_->ground.IsInvalid()) {
     bodies.RemoveBody(impl_->ground);
@@ -118,12 +126,12 @@ void JoltBridge::rebuild(Scene &scene) {
             : CaoObjectLayers::Static);
     // Feet are the contact pads. High tangential traction limits sliding
     // while the torso and links remain free to move.
-    settings.mFriction = object.name.find("Foot") != std::string::npos ? 1.35f : 0.58f;
+    settings.mFriction = object.name.find("Foot") != std::string::npos ? kPlantedPawFriction : 0.58f;
     settings.mRestitution = 0.0f;
     // Lightweight prototype mass model: every robot-link mass is reduced 10x
     // to improve controller authority while preserving the same geometry.
     float massKg = 1.0f;
-    if (object.name == "Torso") massKg = 1.20f;
+    if (object.name == "Torso") massKg = 0.90f;
     else if (object.name.find("Hip Roll") != std::string::npos) massKg = 0.03f;
     else if (object.name.find("Hip") != std::string::npos) massKg = 0.12f;
     else if (object.name.find("Shin") != std::string::npos) massKg = 0.08f;
@@ -164,12 +172,10 @@ void JoltBridge::rebuild(Scene &scene) {
       settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3::sAxisY();
       settings.mLimitsMin = minAngle; settings.mLimitsMax = maxAngle;
       settings.mMotorSettings.SetTorqueLimit(maxTorque); // N m
-      settings.mMotorSettings.mSpringSettings.mFrequency =
-          maxTorque >= CaoLegGeometry::hipPitchTorqueNm
-              ? impl_->tuning.motorFrequencyHz : 10.0f;
-      settings.mMotorSettings.mSpringSettings.mDamping =
-          maxTorque >= CaoLegGeometry::hipPitchTorqueNm
-              ? impl_->tuning.motorDamping : 1.0f;
+      // Support joints use the same damped response. Power arrives only after
+      // the settle delay and is blended over one second in step().
+      settings.mMotorSettings.mSpringSettings.mFrequency = impl_->tuning.motorFrequencyHz;
+      settings.mMotorSettings.mSpringSettings.mDamping = impl_->tuning.motorDamping;
       JPH::Ref<JPH::HingeConstraint> actuator = new JPH::HingeConstraint(
           *parentBody, *childBody, settings);
       // Start unpowered. The rigid links settle under Jolt constraints before
@@ -181,21 +187,25 @@ void JoltBridge::rebuild(Scene &scene) {
       impl_->actuators.emplace_back(std::move(actuator));
     };
     size_t leg = 0;
-    for (int side : {-1, 1}) for (int end : {-1, 1}) {
-      const std::string prefix = std::string(end < 0 ? "Front" : "Rear") +
+    for (int side : {-1, 1}) for (int station : {-1, 0, 1}) {
+      const std::string prefix = std::string(station < 0 ? "Front" : station > 0 ? "Rear" : "Middle") +
           " " + (side < 0 ? "Left" : "Right");
-      const float x = CaoLegGeometry::hipOffsetX * side, z = CaoLegGeometry::hipOffsetZ * end;
+      const float x = CaoLegGeometry::hipOffsetX * side, z = CaoLegGeometry::hipOffsetZ * station;
       impl_->feet[leg] = findBody(prefix + " Foot");
       impl_->shins[leg] = findBody(prefix + " Shin");
       // 4 revolute actuators per leg: hip roll, hip pitch, knee pitch, ankle pitch.
       addHinge("Torso", prefix + " Hip Roll", x, CaoLegGeometry::torsoHipHeight + 0.11f, z, JPH::Vec3::sAxisZ(),
-               -0.35f, 0.35f, 0.0f, CaoLegGeometry::hipRollTorqueNm);
+               CaoLegGeometry::hipRollMinAngle, CaoLegGeometry::hipRollMaxAngle,
+               0.0f, CaoLegGeometry::hipRollTorqueNm);
       addHinge(prefix + " Hip Roll", prefix + " Hip", x, CaoLegGeometry::torsoHipHeight, z, JPH::Vec3::sAxisX(),
-               -0.75f, 0.75f, 0.0f, CaoLegGeometry::hipPitchTorqueNm);
+               CaoLegGeometry::hipPitchMinAngle, CaoLegGeometry::hipPitchMaxAngle,
+               0.0f, CaoLegGeometry::hipPitchTorqueNm);
       addHinge(prefix + " Hip", prefix + " Shin", x, CaoLegGeometry::kneeHeight, z, JPH::Vec3::sAxisX(),
-               -1.5708f, 0.15f, 0.0f, CaoLegGeometry::kneePitchTorqueNm);
+               CaoLegGeometry::kneePitchMinAngle, CaoLegGeometry::kneePitchMaxAngle,
+               0.0f, CaoLegGeometry::kneePitchTorqueNm);
       addHinge(prefix + " Shin", prefix + " Foot", x, CaoLegGeometry::ankleHeight, z, JPH::Vec3::sAxisX(),
-               -0.55f, 0.55f, 0.0f, CaoLegGeometry::anklePitchTorqueNm);
+               CaoLegGeometry::anklePitchMinAngle, CaoLegGeometry::anklePitchMaxAngle,
+               0.0f, CaoLegGeometry::anklePitchTorqueNm);
       ++leg;
     }
   }
@@ -236,51 +246,46 @@ void JoltBridge::step(Scene &scene, float seconds) {
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
   impl_->telemetry.torqueLimitsNm = {{CaoLegGeometry::hipRollTorqueNm, CaoLegGeometry::hipPitchTorqueNm, CaoLegGeometry::kneePitchTorqueNm, CaoLegGeometry::anklePitchTorqueNm}};
   const float phase = impl_->scriptTime * (impl_->script == 3 ? 7.0f : 4.4f);
-  // Calibrated Jolt command corresponding to a physical 90-degree knee.
-  // Standing is mechanically straight: use the neutral hinge pose exactly.
-  const float supportHip = 0.0f;
-  const float supportKnee = 0.0f;
-  // Lightweight centroid-based whole-body correction. The support target
-  // follows the measured feet rather than assuming the robot is at world zero.
-  // Velocity feedback adds anticipation without teleporting any body.
-  float comX = 0.0f, comZ = 0.0f, comVx = 0.0f, comVz = 0.0f;
+  // A standing foot is commanded to its assembled neutral position. Do not
+  // pre-bend all legs to manufacture correction travel: that changes the
+  // support height under every foot at once and can turn a small error into a
+  // fall. Only the selected swing leg is allowed to bend during a walk.
+  constexpr float supportHip = 0.0f;
+  constexpr float supportKnee = 0.0f;
+  constexpr float supportAnkle = 0.0f;
+  float comY = 0.0f, comVx = 0.0f, comVz = 0.0f;
   if (!impl_->torso.IsInvalid()) {
     JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
     if (torsoLock.Succeeded()) {
       const JPH::Body &body = torsoLock.GetBody();
       const JPH::RVec3 p = body.GetPosition();
       const JPH::Vec3 v = body.GetLinearVelocity();
-      comX = static_cast<float>(p.GetX()); comZ = static_cast<float>(p.GetZ());
+      comY = static_cast<float>(p.GetY());
       comVx = v.GetX(); comVz = v.GetZ();
     }
   }
-  CaoBalance::Point supportCenter{};
   int validFeet = 0;
-  for (size_t i = 0; i < 4; ++i) {
-    CaoBalance::Point point{
-        CaoLegGeometry::hipOffsetX * (i < 2 ? -1.0f : 1.0f),
-        CaoLegGeometry::hipOffsetZ * ((i == 0 || i == 2) ? -1.0f : 1.0f)};
+  const auto nominalFootPoint = [](size_t leg) {
+    const float side = leg < 3 ? -1.0f : 1.0f;
+    const int station = static_cast<int>(leg % 3) - 1;
+    return CaoBalance::Point{CaoLegGeometry::hipOffsetX * side,
+                             CaoLegGeometry::hipOffsetZ * station};
+  };
+  for (size_t i = 0; i < kRobotLegCount; ++i) {
     if (!impl_->feet[i].IsInvalid()) {
       JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[i]);
       if (footLock.Succeeded()) {
-        const JPH::RVec3 p = footLock.GetBody().GetPosition();
-        point = {static_cast<float>(p.GetX()), static_cast<float>(p.GetZ())};
         ++validFeet;
       }
     }
-    supportCenter.x += point.x; supportCenter.z += point.z;
   }
-  if (validFeet > 0) {
-    supportCenter.x /= 4.0f; supportCenter.z /= 4.0f;
-  }
-  const float comHipCorrection = std::clamp(
-      (supportCenter.x - comX) * impl_->tuning.comGain -
-      comVx * impl_->tuning.velocityGain, -0.20f, 0.20f);
-  const float comRollCorrection = std::clamp(
-      (supportCenter.z - comZ) * impl_->tuning.comGain -
-      comVz * impl_->tuning.velocityGain, -0.15f, 0.15f);
   const float blend = impl_->motorsEnabled
       ? std::clamp(impl_->motorBlend, 0.0f, 1.0f) : 0.0f;
+  const auto equilibrium = impl_->equilibriumPolicy.update({
+      comY, std::hypot(comVx, comVz),
+      static_cast<float>(validFeet) / static_cast<float>(kRobotLegCount)});
+  impl_->telemetry.equilibriumScore = equilibrium.score;
+  impl_->telemetry.walkingAllowed = equilibrium.walkingAllowed;
   const auto setLegPose = [&](size_t leg, float roll, float hip, float knee, float ankle) {
     const size_t first = leg * 4u;
     const std::array<float,4> desired{{roll, hip, knee, ankle}};
@@ -293,31 +298,37 @@ void JoltBridge::step(Scene &scene, float seconds) {
     impl_->telemetry.targetAnglesRad[leg] = target;
   };
   if (impl_->script == 0) { // Stand
-    // Preserve the visually straight neutral pose. Balance corrections are
-    // deliberately small so stabilization does not become a crouch.
-    const float standHipCorrection = std::clamp(comHipCorrection * 0.35f, -0.07f, 0.07f);
-    const float standRollCorrection = std::clamp(comRollCorrection * 0.35f, -0.05f, 0.05f);
-    for (size_t leg = 0; leg < 4; ++leg)
-      setLegPose(leg, standRollCorrection, supportHip + standHipCorrection,
-                 supportKnee, 0.0f);
+    // A standing robot holds a constant geometry. Attitude recovery is done
+    // by the bounded torso torque below, never by shortening every leg.
+    for (size_t leg = 0; leg < kRobotLegCount; ++leg)
+      setLegPose(leg, 0.0f, supportHip, supportKnee, supportAnkle);
   } else if (impl_->script == 1 || impl_->script == 2) { // Walk / trot
-    // Each cycle is an explicit: stance -> unload -> lift/swing -> place.
-    // The offsets produce a four-beat walk or diagonal-pair trot.
-    constexpr std::array<float, 4> walkOffsets{0.0f, 0.25f, 0.50f, 0.75f};
-    constexpr std::array<float, 4> trotOffsets{0.0f, 0.50f, 0.50f, 0.0f};
-    const auto &offsets = impl_->script == 1 ? walkOffsets : trotOffsets;
-    const float cycleDuration = impl_->script == 1 ? 3.20f : 1.05f;
-    const float globalCycle = std::fmod(impl_->scriptTime / cycleDuration, 1.0f);
-    // Walk offsets are 0,.25,.50,.75; their swing windows therefore occur
-    // in reverse leg order as the global cycle advances.
-    const size_t scheduledSwingLeg = static_cast<size_t>(
-        (3 - static_cast<int>(globalCycle * 4.0f) + 4) % 4);
+    // One foot moves at a time. Five feet remain at the fixed neutral height,
+    // which gives the balance gate a large, non-changing support envelope.
+    // Script 2 retains its faster cadence but is still a single-foot gait.
+    const float cycleDuration = impl_->script == 1 ? 6.00f : 4.00f;
+    // Fade in the locomotion envelope after the neutral pose has settled.
+    // This avoids an initial impulse from commanding six different support
+    // reaches when motors first engage.
+    const float gaitTime = std::max(0.0f, impl_->scriptTime - 1.50f);
+    const float gaitRamp = std::clamp(gaitTime / 5.0f, 0.0f, 1.0f);
+    const float globalCycle = std::fmod(gaitTime / cycleDuration, 1.0f);
+    const float stanceSweep = 0.025f * gaitRamp;
+    impl_->telemetry.activeSwingTripod = -1;
     auto &bodyInterface = impl_->physics->GetBodyInterface();
-    for (size_t leg = 0; leg < 4; ++leg) {
-      const float cycle = std::fmod(impl_->scriptTime / cycleDuration + offsets[leg], 1.0f);
-      const float side = leg < 2 ? -1.0f : 1.0f;
-      // Do not lift a leg unless the projected torso COM is supported by
-      // the remaining three nominal foot contacts.
+    for (size_t leg = 0; leg < kRobotLegCount; ++leg) {
+      // With six evenly phased legs and a 12% swing window, at most one leg
+      // is airborne. The other five slowly sweep through stance.
+      const float cycle = std::fmod(globalCycle +
+          static_cast<float>(leg) / static_cast<float>(kRobotLegCount), 1.0f);
+      const float side = leg < 3 ? -1.0f : 1.0f;
+      const bool tripodA = leg == 0 || leg == 2 || leg == 4;
+      const int tripod = tripodA ? 0 : 1;
+      constexpr float swingStart = 0.76f;
+      constexpr float swingEnd = 0.88f;
+      const bool scheduledForSwing = cycle >= swingStart && cycle < swingEnd;
+      // Do not lift the selected foot unless the torso projection remains
+      // inside the five-foot support envelope.
       CaoBalance::Point com{};
       if (!impl_->torso.IsInvalid()) {
         JPH::BodyLockRead torsoLock(impl_->physics->GetBodyLockInterface(), impl_->torso);
@@ -326,10 +337,9 @@ void JoltBridge::step(Scene &scene, float seconds) {
           com = {static_cast<float>(p.GetX()), static_cast<float>(p.GetZ())};
         }
       }
-      std::array<CaoBalance::Point, 4> footPoints{};
-      for (size_t i = 0; i < 4; ++i) {
-        footPoints[i] = {CaoLegGeometry::hipOffsetX * (i < 2 ? -1.0f : 1.0f),
-                         CaoLegGeometry::hipOffsetZ * ((i == 0 || i == 2) ? -1.0f : 1.0f)};
+      std::array<CaoBalance::Point, kRobotLegCount> footPoints{};
+      for (size_t i = 0; i < kRobotLegCount; ++i) {
+        footPoints[i] = nominalFootPoint(i);
         if (!impl_->feet[i].IsInvalid()) {
           JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[i]);
           if (footLock.Succeeded()) {
@@ -338,118 +348,96 @@ void JoltBridge::step(Scene &scene, float seconds) {
           }
         }
       }
-      std::array<CaoBalance::Point, 3> support{};
-      size_t supportIndex = 0;
-      for (size_t i = 0; i < 4; ++i)
-        if (i != leg) support[supportIndex++] = footPoints[i];
-      std::array<CaoBalance::Point, 3> nominalSupport{};
-      size_t nominalIndex = 0;
-      for (size_t i = 0; i < 4; ++i) {
-        if (i == leg) continue;
-        nominalSupport[nominalIndex++] = {
-            CaoLegGeometry::hipOffsetX * (i < 2 ? -1.0f : 1.0f),
-            CaoLegGeometry::hipOffsetZ * ((i == 0 || i == 2) ? -1.0f : 1.0f)};
-      }
-      // Prefer measured contacts, but retain the known rectangular support
-      // model as a fallback when contact points are temporarily degenerate.
+      std::array<CaoBalance::Point, kRobotLegCount> nominalFeet{};
+      for (size_t i = 0; i < kRobotLegCount; ++i)
+        nominalFeet[i] = nominalFootPoint(i);
+      // Prefer measured feet, but retain the nominal footprint when contacts
+      // are temporarily degenerate during a simulation step.
       const bool balanceReady =
-          CaoBalance::insideTriangle(com, support, 0.01f) ||
-          CaoBalance::insideTriangle(com, nominalSupport, -0.02f);
+          CaoBalance::insideSupportBounds(com, footPoints, leg, 0.03f) ||
+          CaoBalance::insideSupportBounds(com, nominalFeet, leg, 0.03f);
       // Jolt reports the assembled neutral hinge reference near -0.16 rad.
       // Offset the commanded joint angle so the physical femur/tibia pose
       // reaches the requested 90 degrees instead of accumulating the rest
       // pose offset as tracking error.
-      float roll = 0.0f, hip = 0.0f, knee = supportKnee, ankle = 0.0f;
+      float roll = 0.0f, hip = 0.0f, knee = supportKnee, ankle = supportAnkle;
       float swingLiftForceN = 0.0f;
       int state = 0;
-      bool planted = cycle < (impl_->script == 1 ? 0.72f : 0.66f) || cycle >= (impl_->script == 1 ? 0.98f : 0.96f);
-      if (cycle < (impl_->script == 1 ? 0.72f : 0.58f)) { // crawl stance: three legs support the body
+      bool planted = cycle < (impl_->script == 1 ? swingStart : 0.66f) ||
+          cycle >= (impl_->script == 1 ? swingEnd : 0.96f);
+      if (cycle < (impl_->script == 1 ? 0.72f : 0.58f)) { // crawl stance: five legs support the body
         const float t = cycle / (impl_->script == 1 ? 0.72f : 0.58f);
         if (impl_->script == 1) {
-          // Hold the three support legs nearly fixed while the fourth leg
-          // prepares to lift. This is an equilibrium-first crawl test.
-          hip = supportHip + comHipCorrection;
-          roll = comRollCorrection;
-          ankle = 0.0f;
+          // A shallow planted-foot sweep creates forward ground reaction.
+          // Hip pitch is the only support DOF used, so foot height remains
+          // fixed and the knee/ankle stay load-bearing.
+          hip = stanceSweep * (1.0f - 2.0f * t);
+          roll = 0.0f;
+          ankle = supportAnkle;
         } else {
           hip = 0.18f - 0.42f * t;
           ankle = -0.10f * hip;
         }
-      } else if (cycle < (impl_->script == 1 ? 0.78f : 0.66f)) { // unload before the single-leg swing
+      } else if (cycle < (impl_->script == 1 ? swingStart : 0.66f)) { // unload before the single-leg swing
         state = 1;
-        const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) / 0.06f;
-        hip = impl_->script == 1 ? supportHip + comHipCorrection : -0.24f + 0.05f * t;
-        if (impl_->script == 1) roll = comRollCorrection;
+        const float t = (cycle - (impl_->script == 1 ? 0.72f : 0.58f)) /
+                        (impl_->script == 1 ? swingStart - 0.72f : 0.06f);
+        hip = impl_->script == 1 ? -stanceSweep : -0.24f + 0.05f * t;
         roll = impl_->script == 1 ? 0.0f : side * 0.12f;
-      } else if (cycle < (impl_->script == 1 ? 0.98f : 0.96f) &&
-                 balanceReady && leg == scheduledSwingLeg) { // one leg only
+      } else if (cycle < (impl_->script == 1 ? swingEnd : 0.96f) &&
+                 balanceReady && equilibrium.walkingAllowed && scheduledForSwing) {
         state = 2;
-        const float t = (cycle - (impl_->script == 1 ? 0.78f : 0.66f)) / (impl_->script == 1 ? 0.20f : 0.30f);
+        const float t = (cycle - (impl_->script == 1 ? swingStart : 0.66f)) / (impl_->script == 1 ? swingEnd - swingStart : 0.30f);
         const float lift = std::sin(JPH::JPH_PI * t);
-        hip = impl_->script == 1 ? supportHip + comHipCorrection + 0.05f * t : -0.19f + 0.43f * t;
-        knee = supportKnee - (impl_->script == 1 ? -CaoLegGeometry::swingKneeAngle : 0.62f) * lift;
-        ankle = (impl_->script == 1 ? 0.10f : 0.20f) * lift;
+        hip = impl_->script == 1 ? -stanceSweep + 2.0f * stanceSweep * t : -0.19f + 0.43f * t;
+        knee = supportKnee - (impl_->script == 1 ? 0.25f * gaitRamp : 0.62f) * lift;
+        ankle = supportAnkle + (impl_->script == 1 ? 0.06f : 0.20f) * lift;
         roll = impl_->script == 1 ? 0.0f : side * 0.10f * (1.0f - lift);
-        // Equal-and-opposite internal actuator force assists the rotary knee.
-        // It has no net external force. A bounded PD term prevents energy
-        // accumulation once the foot has cleared the floor.
-        if (!impl_->feet[leg].IsInvalid()) {
-          JPH::BodyLockRead footLock(impl_->physics->GetBodyLockInterface(), impl_->feet[leg]);
-          if (footLock.Succeeded()) {
-            const JPH::Body &footBody = footLock.GetBody();
-            const float footY = static_cast<float>(footBody.GetPosition().GetY());
-            const float footVy = footBody.GetLinearVelocity().GetY();
-            if (footY < 0.20f && footVy < 0.45f)
-              swingLiftForceN = std::clamp((0.20f - footY) * 42.0f - footVy * 3.5f, 0.0f, 8.0f) * lift;
-          }
-        }
+        // Joint motors alone perform the lift. Do not inject an additional
+        // vertical force into a single leg: it creates an impulse at the
+        // contact and destabilizes the rest of the support polygon.
         planted = false;
       } else { // place: extend the knee before high traction returns
         state = 3;
-        const float t = (cycle - (impl_->script == 1 ? 0.98f : 0.96f)) / (impl_->script == 1 ? 0.02f : 0.04f);
-        hip = impl_->script == 1 ? supportHip : 0.24f - 0.06f * t;
+        const float t = (cycle - (impl_->script == 1 ? swingEnd : 0.96f)) / (impl_->script == 1 ? 1.0f - swingEnd : 0.04f);
+        hip = impl_->script == 1 ? stanceSweep : 0.24f - 0.06f * t;
         knee = impl_->script == 1 ? supportKnee : supportKnee - 0.18f * (1.0f - t);
-        ankle = impl_->script == 1 ? 0.0f : 0.05f * (1.0f - t);
+        ankle = impl_->script == 1 ? supportAnkle : 0.05f * (1.0f - t);
       }
       setLegPose(leg, roll, hip, knee, ankle);
       impl_->telemetry.legState[leg] = state;
-      impl_->telemetry.footFriction[leg] = planted ? 1.35f : 0.08f;
+      impl_->telemetry.footFriction[leg] = planted ? kPlantedPawFriction : kSwingPawFriction;
       impl_->telemetry.liftAssistForceN[leg] = swingLiftForceN;
       if (state == 2) {
-        impl_->telemetry.activeSwingLeg = static_cast<int>(leg);
+        if (impl_->telemetry.activeSwingLeg < 0)
+          impl_->telemetry.activeSwingLeg = static_cast<int>(leg);
+        impl_->telemetry.activeSwingTripod = tripod;
         impl_->telemetry.swingLiftForceN = swingLiftForceN;
       }
       if (!impl_->feet[leg].IsInvalid())
-        bodyInterface.SetFriction(impl_->feet[leg], planted ? 1.35f : 0.08f);
+        bodyInterface.SetFriction(impl_->feet[leg], planted ? kPlantedPawFriction : kSwingPawFriction);
       // During crawl stance, a bounded body force supplies the horizontal
       // ground reaction that joint targets alone cannot create. It is applied
       // only while this leg is planted, so three legs share propulsion.
       // Crawl stability phase intentionally has no artificial propulsion.
       // First establish three-leg equilibrium; propulsion is added only after
       // this balance test is reliable.
-      if (swingLiftForceN > 0.0f && !impl_->feet[leg].IsInvalid() &&
-          !impl_->shins[leg].IsInvalid()) {
-        const JPH::Vec3 liftForce(0.0f, swingLiftForceN, 0.0f);
-        bodyInterface.AddForce(impl_->feet[leg], liftForce);
-        bodyInterface.AddForce(impl_->shins[leg], -liftForce);
-      }
-
       // A planted foot pushes against the floor to propel the body. The force
       // is applied to the contact body, allowing ground friction and the Jolt
       // constraints to transmit the reaction through the leg chain.
       if (impl_->script == 1 && planted && !impl_->feet[leg].IsInvalid()) {
-        constexpr float stancePushForceN = 0.01f;
-        bodyInterface.AddForce(impl_->feet[leg],
-                               JPH::Vec3(0.0f, 0.0f, -stancePushForceN));
+        // Do not inject horizontal energy until footstep placement is
+        // solved. The old push made the robot drift faster than its support
+        // polygon and was the primary cause of the recorded collapse.
       }
     }
   } else if (impl_->script == 3) { // Repeated jump
     const float extension = std::max(0.0f, std::sin(phase));
-    for (size_t leg = 0; leg < 4; ++leg)
+    for (size_t leg = 0; leg < kRobotLegCount; ++leg)
       setLegPose(leg, 0.0f, 0.0f, -0.85f + 0.70f * extension, 0.0f);
   }
   impl_->telemetry.gaitCycle = impl_->script == 1 || impl_->script == 2
-      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 3.20f : 1.05f), 1.0f) : 0.0f;
+      ? std::fmod(impl_->scriptTime / (impl_->script == 1 ? 6.00f : 4.00f), 1.0f) : 0.0f;
   impl_->physics->Update(seconds, 4, impl_->allocator.get(), impl_->jobs.get());
 
   // Active torso stabilization: use the measured Jolt attitude and angular
@@ -506,7 +494,7 @@ void JoltBridge::step(Scene &scene, float seconds) {
   // Read the actual Jolt hinge state and estimate motor demand from the
   // remaining position error. This is diagnostic telemetry, not a claim of
   // measured electrical current or exact constraint torque.
-  for (size_t i = 0; i < impl_->rotaryActuators.size() && i < 16; ++i) {
+  for (size_t i = 0; i < impl_->rotaryActuators.size() && i < kRobotActuatorCount; ++i) {
     const size_t leg = i / 4u, joint = i % 4u;
     const float actual = impl_->rotaryActuators[i]->GetCurrentAngle();
     const float target = impl_->telemetry.targetAnglesRad[leg][joint];
@@ -581,6 +569,7 @@ void JoltBridge::setRobotScript(int script) {
   impl_->settleTime = 0.0f;
   impl_->motorBlend = 0.0f;
   impl_->motorsEnabled = false;
+  impl_->equilibriumPolicy.reset(script == 0);
   for (const auto &actuator : impl_->rotaryActuators)
     actuator->SetMotorState(JPH::EMotorState::Off);
   auto &bodies = impl_->physics->GetBodyInterface();

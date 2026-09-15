@@ -38,15 +38,15 @@ bool exportRobotParameters(const Scene &scene, int motionScript,
   root["simulation"] = {{"gravity_m_per_s2", {0.0, -9.81, 0.0}},
                          {"motion_script", scripts[std::clamp(motionScript, 0, 3)]},
                          {"jolt_collision_steps", 2}};
-  root["robot"] = {{"name", "Quadruped"},
+  root["robot"] = {{"name", "Hexapod"},
                    {"total_design_mass_kg", 20.0},
-                   {"actuator_count", 16},
+                   {"actuator_count", 24},
                    {"swing_lift_assist", {{"type", "balanced_internal_force"}, {"max_force_N", 18.0}, {"applies_during", "lift_swing"}, {"force_pair", "foot_up_shin_down"}, {"controller", "bounded_pd"}, {"clearance_target_m", 0.20}, {"max_force_N", 8.0}, {"max_upward_velocity_mps", 0.45}}},
                    {"actuators", {
-                     {"hip_roll", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.35, 0.35}}, {"max_torque_Nm", 55.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
-                     {"hip_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.75, 0.75}}, {"max_torque_Nm", 85.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
-                     {"knee_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-1.30, 0.15}}, {"max_torque_Nm", 75.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
-                     {"ankle_pitch", {{"type", "hinge"}, {"count", 4}, {"limits_rad", {-0.55, 0.55}}, {"max_torque_Nm", 35.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}}
+                     {"hip_roll", {{"type", "hinge"}, {"count", 6}, {"limits_rad", {-0.35, 0.35}}, {"max_torque_Nm", 220.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
+                     {"hip_pitch", {{"type", "hinge"}, {"count", 6}, {"limits_rad", {-0.75, 0.75}}, {"max_torque_Nm", 480.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
+                     {"knee_pitch", {{"type", "hinge"}, {"count", 6}, {"limits_rad", {-1.57, 0.15}}, {"max_torque_Nm", 360.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}},
+                     {"ankle_pitch", {{"type", "hinge"}, {"count", 6}, {"limits_rad", {-0.55, 0.55}}, {"max_torque_Nm", 220.0}, {"servo_frequency_hz", 10.0}, {"damping_ratio", 1.0}}}
                    }}};
   root["links"] = json::array();
   for (const SceneObject &object : scene.objects()) {

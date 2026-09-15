@@ -2,22 +2,36 @@
 #include <algorithm>
 #include <cmath>
 
-// Shared quadruped dimensions in metres. Keep renderer, Jolt anchors,
+// Shared hexapod dimensions in metres. Keep renderer, Jolt anchors,
 // telemetry, and the future IK solver on the same physical model.
 namespace CaoLegGeometry {
 inline constexpr float hipOffsetX = 0.64f;
-inline constexpr float hipOffsetZ = 0.30f;
-inline constexpr float torsoHipHeight = 2.11f;
-inline constexpr float kneeHeight = 1.41f;
-inline constexpr float ankleHeight = 0.70f;
-inline constexpr float femurLength = 0.70f;
-inline constexpr float tibiaLength = 0.71f;
-inline constexpr float footLength = 0.30f;
+// Front/rear separation gives the robot a dog-like rectangular support base.
+inline constexpr float hipOffsetZ = 0.62f;
+inline constexpr float torsoHipHeight = 0.925f;
+inline constexpr float kneeHeight = 0.600f;
+// Compact cat-paw contact pad: the long lower leg reaches a very short sole.
+inline constexpr float ankleHeight = 0.09f;
+inline constexpr float femurLength = 0.325f;
+inline constexpr float tibiaLength = 0.51f;
+inline constexpr float footLength = 0.21f;
+inline constexpr float footWidth = 0.17f;
 inline constexpr float supportKneeAngle = 0.0f;
-inline constexpr float hipRollTorqueNm = 165.0f;
-inline constexpr float hipPitchTorqueNm = 480.0f;
-inline constexpr float kneePitchTorqueNm = 360.0f;
-inline constexpr float anklePitchTorqueNm = 150.0f;
+// DOF safety envelope. Zero is the assembled, load-bearing neutral pose.
+// The negative pitch stops prevent a falling torso from folding every leg
+// underneath itself before the equilibrium gate can stop the gait.
+inline constexpr float hipRollMinAngle = -0.20f;
+inline constexpr float hipRollMaxAngle = 0.20f;
+inline constexpr float hipPitchMinAngle = -0.40f;
+inline constexpr float hipPitchMaxAngle = 0.40f;
+inline constexpr float kneePitchMinAngle = -0.70f;
+inline constexpr float kneePitchMaxAngle = 0.20f;
+inline constexpr float anklePitchMinAngle = -0.30f;
+inline constexpr float anklePitchMaxAngle = 0.30f;
+inline constexpr float hipRollTorqueNm = 260.0f;
+inline constexpr float hipPitchTorqueNm = 620.0f;
+inline constexpr float kneePitchTorqueNm = 500.0f;
+inline constexpr float anklePitchTorqueNm = 300.0f;
 inline constexpr float hipPitchMotorFrequencyHz = 3.5f;
 inline constexpr float hipPitchMotorDamping = 2.4f;
 inline constexpr float swingKneeAngle = -1.5708f;

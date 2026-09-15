@@ -1,6 +1,6 @@
 #pragma once
 #include "Scene.hpp"
-#include "JoltBridge.hpp"
+#include "MuJoCoBridge.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <string>
