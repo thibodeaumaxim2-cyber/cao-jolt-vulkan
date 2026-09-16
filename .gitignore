@@ -4,6 +4,7 @@ out/
 compile_commands.json
 .vscode/
 .idea/
+.venv/
 *.swp
 core
 core.*

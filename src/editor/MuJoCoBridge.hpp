@@ -24,6 +24,12 @@ struct RobotTelemetry {
   float torsoSpeedMps = 0.0f;
   float equilibriumScore = 0.0f;
   bool walkingAllowed = false;
+  std::array<bool,2> footContact{};
+  std::array<float,2> footNormalForceN{};
+  bool learningActive = false;
+  int learningProfile = 0;
+  int learningSamples = 0;
+  float learningReward = 0.0f;
   float swingLiftForceN = 0.0f;
   std::array<int, kRobotLegCount> legState{};
   std::array<std::array<float, kRobotJointsPerLeg>, kRobotLegCount> targetAnglesRad{};

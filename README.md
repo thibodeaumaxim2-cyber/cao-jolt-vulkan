@@ -58,9 +58,86 @@ Left click selects. Right drag orbits. Middle drag pans. Wheel zooms. `W`, `E`, 
 The **Import Unitree H1** toolbar action loads Unitree's original `scene.xml`
 and mesh assets into MuJoCo. Vulkan loads and renders the matching binary STL
 mesh for every visible H1 link, synchronized to MuJoCo body transforms. The
-H1 stays paused until a dedicated balance/controller layer is implemented.
+H1 uses a torque-safe bent-stance controller with pelvis roll/pitch equilibrium
+assist and a slow, alternating assisted-step controller. It lifts and advances
+one leg at a time, shifts toward the support side, and pauses the gait below an
+88% equilibrium score. This is a simulation controller, not a hardware-ready
+locomotion policy.
 
-## Project status
+**H1 learning walk** adds a bounded online learning layer. It tests three
+nearby conservative step profiles, rewards forward progress while penalizing
+loss of equilibrium, and selects the best observed profile. Torque limits and
+the 88% balance gate remain hard safety constraints.
+
+## PyTorch locomotion policy
+
+**Recommended H1 mode: H1 Unitree pretrained walk.** Import H1 using the
+Unitree walk button (or select that motion script for an existing H1). This
+loads Unitree's matching ten-joint deployment model and recurrent walking
+policy. Selecting the mode rebuilds the physics model on its next step.
+The upper body is fixed as in the training model. Vulkan remains the renderer.
+Forward velocity command is currently 0.5 m/s.
+
+Run the eight-second contact-based regression with
+`./build/cao-headless h1unitree --quick`, or a 60-second run without
+`--quick`. Successful steps require loss of ground contact, at least 2 cm
+ankle rise from the preceding contact height, and renewed contact at least
+5 cm forward. Both feet must complete at least two such steps.
+This mode bypasses the earlier virtual pelvis forces and does not consume
+the FBX approximation. See `assets/unitree_h1/README.md` for provenance.
+
+Validation correction: the earlier foot-clearance metric was relative to the
+pelvis and could count crouching as foot lift. It now measures world-height
+change. Earlier reported 10–17 cm clearances do not establish real steps.
+The controller also retains external pelvis balance assistance; passing a
+smoke test does not establish unassisted physical walking.
+
+`cao-headless h1contact --quick` exercises the experimental contact/IK
+controller (script 4). It holds sagittal stance targets in world space and
+requires airborne motion followed by ground contact before switching feet.
+Its first trial failed during support transfer; it is not the default and is
+not yet a validated walk or a full FBX pose retargeter.
+
+`tools/train_h1_policy.py` trains a small PyTorch imitation policy from the
+bundled Mesh2Motion CC0 walk timing and writes `assets/h1_locomotion_policy.json`.
+`MuJoCoBridge` loads that file automatically when H1 learning walk starts and
+runs its linear inference natively in C++; the application does not need a
+Python interpreter at runtime.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install torch
+blender --background assets/motion/mesh2motion-human-walk-large.blend \
+  --python tools/export_mesh2motion_fbx.py -- assets/motion/mesh2motion-walk.fbx
+blender --background --python-expr "import bpy; bpy.ops.import_scene.fbx(filepath='assets/motion/mesh2motion-walk.fbx')" \
+  --python tools/extract_mesh2motion_walk.py -- assets/motion/mesh2motion_walk.json
+.venv/bin/python tools/train_h1_policy.py
+python3 tools/retarget_mesh2motion_to_h1.py
+cmake --build build -j 4
+```
+
+The generated `assets/h1_motion_reference.json` is also loaded by **H1 learning
+walk**. It is a direct, phase-by-phase visual retarget of the source walk,
+bounded to H1's joint range. It does not replay an FBX rigidly: MuJoCo keeps
+the feet in contact and rejects phases that violate the balance gate.
+
+The initial policy is intentionally supervised and conservative. The next
+iteration can replace its teacher trajectories with rollouts and rewards from
+the headless MuJoCo simulator for reinforcement learning.
+
+The project includes the CC0 Mesh2Motion large-walk source at
+`assets/motion/mesh2motion-human-walk-large.blend`, with its provenance and
+license recorded in `assets/motion/README.md`. It is the motion-imitation
+reference for retargeting human hip, knee, ankle, and shoulder timing to H1.
+
+`H1 30 cm ZMP walk (experimental)` is the start of the next controller layer:
+it has a continuous support/swing trajectory and a bounded COM-over-support
+force. The headless test measures ground-relative ankle placement and currently
+rejects it as below the 25 cm acceptance threshold. A real 30 cm gait remains
+the next milestone, requiring contact-state estimation, inverse kinematics, and
+a whole-body MPC/ZMP solver.
+
+## Project status 
 
 The project is an active prototype moving toward a reusable native physics editor. The Vulkan path is the supported interactive renderer; the old OpenGL wording has been removed because there is currently no OpenGL application entry point in this repository.
 

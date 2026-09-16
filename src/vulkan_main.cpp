@@ -25,11 +25,12 @@
 static float gYaw = 0.55f, gPitch = -0.55f, gZoom = 1.0f, gPanX = 0.0f, gPanY = 0.0f;
 static bool gDragging = false, gPanning = false, gSimulationRunning = false;
 static bool gFramebufferResized = false;
+static int gWindowWidth = 1280, gWindowHeight = 800, gWindowX = 80, gWindowY = 80;
 static int gTintMode = 0;
 static bool gBuildRequested = false, gBuildBipedRequested = false, gBuildUnitreeH1Requested = false, gDemoRequested = false, gSafeWalkRequested = false, gNewSceneRequested = false, gUiReady = false;
 static int gCreatePrimitive = -1;
 static uint32_t gSelectedId = 1;
-static int gRobotScript = 1; // Walk is the default interactive motion.
+static int gRobotScript = 5; // Unitree's official pretrained H1 policy.
 static bool gDeleteRequested = false, gPhysicsRebuildRequested = false;
 static bool gSaveRequested = false, gLoadRequested = false;
 static std::string gSceneStatus;
@@ -224,7 +225,7 @@ int main() {
     MuJoCoBridge physics;
     physics.initialize();
     Scene scene;
-    scene.buildQuadruped();
+    scene.buildUnitreeH1();
     physics.rebuild(scene);
     physics.setRobotScript(gRobotScript);
     RobotFrameRecorder frameRecorder{5.0f};
@@ -548,6 +549,7 @@ int main() {
     auto recreateSwapchain = [&] {
       int resizedWidth = 0, resizedHeight = 0;
       while (resizedWidth == 0 || resizedHeight == 0) {
+        if (glfwWindowShouldClose(window)) return;
         glfwGetFramebufferSize(window, &resizedWidth, &resizedHeight);
         if (resizedWidth == 0 || resizedHeight == 0) glfwWaitEvents();
       }
@@ -610,6 +612,7 @@ int main() {
     };
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
+      if (glfwWindowShouldClose(window)) break;
       if (gFramebufferResized) { recreateSwapchain(); continue; }
       ImGui_ImplVulkan_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
       if (ImGui::BeginMainMenuBar()) {
@@ -629,11 +632,8 @@ int main() {
         }
         if (ImGui::BeginMenu("Simulation")) {
           if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
-          if (ImGui::MenuItem("Start safe walk")) gSafeWalkRequested = true;
-          if (ImGui::MenuItem("Reset quadruped", "B")) gBuildRequested = true;
-          if (ImGui::MenuItem("Build biped (stand)")) gBuildBipedRequested = true;
-          if (ImGui::MenuItem("Import Unitree H1 (paused)")) gBuildUnitreeH1Requested = true;
-          if (ImGui::MenuItem("Drop robot", "D")) gDemoRequested = true;
+          if (ImGui::MenuItem("Reset H1", "B")) gBuildUnitreeH1Requested = true;
+          if (ImGui::MenuItem("Drop H1", "D")) gDemoRequested = true;
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -647,20 +647,67 @@ int main() {
           if (ImGui::MenuItem("Right")) { gYaw=1.57f; gPitch=0.0f; gZoom=0.9f; gPanX=gPanY=0.0f; }
           ImGui::EndMenu();
         }
+        // Draw window controls as geometry: no platform-specific icon font.
+        const float buttonWidth = 32.0f;
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(),
+            ImGui::GetWindowWidth() - 3.0f * (buttonWidth + ImGui::GetStyle().ItemSpacing.x) - 8.0f));
+        for (int control=0; control<3; ++control) {
+          if(control) ImGui::SameLine();
+          ImGui::PushID(control);
+          const bool clicked=ImGui::InvisibleButton("window-control", ImVec2(buttonWidth,ImGui::GetFrameHeight()));
+          const ImVec2 p=ImGui::GetItemRectMin(), q=ImGui::GetItemRectMax();
+          auto *draw=ImGui::GetWindowDrawList();
+          if(ImGui::IsItemHovered()) {
+            draw->AddRectFilled(p,q,control==2 ? IM_COL32(190,45,45,255) : IM_COL32(70,80,95,255),3);
+            ImGui::SetTooltip("%s",control==0 ? "Minimize" : control==1 ?
+                (glfwGetWindowAttrib(window,GLFW_MAXIMIZED) ? "Restore" : "Maximize") : "Close");
+          }
+          const float x=(p.x+q.x)*.5f, y=(p.y+q.y)*.5f;
+          const ImU32 color=ImGui::GetColorU32(ImGuiCol_Text);
+          if(control==0) draw->AddLine(ImVec2(x-5,y+3),ImVec2(x+5,y+3),color,1.5f);
+          if(control==1) {
+            if(glfwGetWindowAttrib(window,GLFW_MAXIMIZED))
+              draw->AddRect(ImVec2(x-2,y-6),ImVec2(x+6,y+2),color);
+            draw->AddRect(ImVec2(x-5,y-3),ImVec2(x+3,y+5),color);
+          }
+          if(control==2) {
+            draw->AddLine(ImVec2(x-4,y-4),ImVec2(x+4,y+4),color,1.5f);
+            draw->AddLine(ImVec2(x+4,y-4),ImVec2(x-4,y+4),color,1.5f);
+          }
+          if(clicked) {
+            if(control==0) glfwIconifyWindow(window);
+            if(control==1) {
+              if(glfwGetWindowAttrib(window,GLFW_MAXIMIZED)) glfwRestoreWindow(window);
+              else glfwMaximizeWindow(window);
+            }
+            if(control==2) glfwSetWindowShouldClose(window,GLFW_TRUE);
+          }
+          ImGui::PopID();
+        }
         ImGui::EndMainMenuBar();
       }
       ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowBgAlpha(0.92f);
-      if (gShowToolbar) ImGui::Begin("CAO Toolbar", &gShowToolbar, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
       if (gShowToolbar) {
-      if (ImGui::Button("Reset robot")) gBuildRequested = true; ImGui::SameLine();
-      if (ImGui::Button("Build biped")) gBuildBipedRequested = true; ImGui::SameLine();
-      if (ImGui::Button("Import Unitree H1")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
-      if (ImGui::Button("Start safe walk")) gSafeWalkRequested = true; ImGui::SameLine();
+      ImGui::Begin("CAO Toolbar", &gShowToolbar, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+      if (ImGui::Button("Reset H1")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
+      if (ImGui::Button("Import H1 Unitree walk")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
+      ImGui::TextUnformatted("Unitree pretrained locomotion"); ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
+      ImGui::Separator();
+      ImGui::TextDisabled("Window controls");
+      ImGui::SetNextItemWidth(72); ImGui::InputInt("Width", &gWindowWidth); ImGui::SameLine();
+      ImGui::SetNextItemWidth(72); ImGui::InputInt("Height", &gWindowHeight);
+      gWindowWidth = std::max(gWindowWidth, 720); gWindowHeight = std::max(gWindowHeight, 520);
+      if (ImGui::Button("Apply size")) { glfwRestoreWindow(window); glfwSetWindowSize(window, gWindowWidth, gWindowHeight); }
+      ImGui::SameLine();
+      if (ImGui::Button("Center / move")) { glfwRestoreWindow(window); glfwSetWindowPos(window, gWindowX, gWindowY); }
+      ImGui::SameLine();
+      if (ImGui::Button("Default 1280 x 800")) { glfwRestoreWindow(window); glfwSetWindowSize(window, 1280, 800); glfwSetWindowPos(window, 80, 80); }
       ImGui::TextDisabled(scene.isUnitreeH1()
-          ? "Unitree H1: official MuJoCo dynamics | controller integration pending"
+          ? "Unitree H1: torque PD | balance-gated assisted stepping"
           : scene.isBiped() ? "Biped: 8 rotary actuators | balance-verified standing pose"
                             : "Hexapod: 24 rotary actuators | one-foot crawl gait");
       if (!gSceneStatus.empty()) {
@@ -670,11 +717,16 @@ int main() {
         ImGui::PopStyleColor();
       }
       const char *robotScripts[] = {"Stand", "Crawl walk", "Tripod walk", "Fast crawl"};
-      if (ImGui::Combo("Motion script", &gRobotScript, robotScripts, IM_ARRAYSIZE(robotScripts))) {
+      const char *h1Scripts[] = {"H1 Unitree pretrained walk"};
+      const char *const *activeScripts = scene.isUnitreeH1() ? h1Scripts : robotScripts;
+      const int activeScriptCount = scene.isUnitreeH1() ? IM_ARRAYSIZE(h1Scripts) : IM_ARRAYSIZE(robotScripts);
+      int visibleScript = scene.isUnitreeH1() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
+      if (ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount)) {
+        gRobotScript = scene.isUnitreeH1() ? 5 : visibleScript;
         physics.setRobotScript(gRobotScript);
         gSimulationRunning = gRobotScript != 0;
       }
-      ImGui::Text("Active script: %s", robotScripts[gRobotScript]);
+      ImGui::Text("Active script: %s", activeScripts[visibleScript]);
       const RobotTelemetry &robotTelemetry = physics.telemetry();
       ImGui::Separator();
       ImGui::Text("Telemetry | torso %.3f m/s | cycle %.2f | swing leg %d",
@@ -683,6 +735,12 @@ int main() {
       ImGui::Text("Equilibrium AI: %.0f%% | walking %s",
                   robotTelemetry.equilibriumScore * 100.0f,
                   robotTelemetry.walkingAllowed ? "allowed" : "paused");
+      if (scene.isUnitreeH1())
+        ImGui::TextDisabled("H1 stance: torque PD strength + pelvis IMU balance assist");
+      if (robotTelemetry.learningActive)
+        ImGui::Text("Learning gait: profile %d | samples %d | reward %.3f",
+                    robotTelemetry.learningProfile + 1, robotTelemetry.learningSamples,
+                    robotTelemetry.learningReward);
       ImGui::Text("Limits N m: roll %.0f | hip %.0f | knee %.0f | ankle %.0f",
                   robotTelemetry.torqueLimitsNm[0], robotTelemetry.torqueLimitsNm[1],
                   robotTelemetry.torqueLimitsNm[2], robotTelemetry.torqueLimitsNm[3]);
@@ -715,8 +773,8 @@ int main() {
 
       ImGui::SetNextWindowPos(ImVec2(12, 420), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowSize(ImVec2(235, 340), ImGuiCond_FirstUseEver);
-      if (gShowObjectTree) ImGui::Begin("Object tree", &gShowObjectTree, ImGuiWindowFlags_NoCollapse);
       if (gShowObjectTree) {
+      ImGui::Begin("Object tree", &gShowObjectTree, ImGuiWindowFlags_NoCollapse);
       for (const SceneObject &object : scene.objects()) {
         const bool selected = object.id == gSelectedId;
         if (ImGui::Selectable(object.name.c_str(), selected)) gSelectedId = object.id;
@@ -724,10 +782,10 @@ int main() {
       ImGui::End();
       }
 
-      ImGui::SetNextWindowPos(ImVec2(float(extent.width) - 270.0f, 34), ImGuiCond_FirstUseEver);
+      ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 270.0f, 34), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowSize(ImVec2(258, 0), ImGuiCond_FirstUseEver);
-      if (gShowProperties) ImGui::Begin("Properties", &gShowProperties, ImGuiWindowFlags_NoCollapse);
       if (gShowProperties) {
+      ImGui::Begin("Properties", &gShowProperties, ImGuiWindowFlags_NoCollapse);
       SceneObject *selected = scene.find(gSelectedId);
       if (!selected) {
         ImGui::TextDisabled("Select an object in the tree.");
@@ -753,8 +811,8 @@ int main() {
       ImGui::End();
       }
 
-      ImGui::SetNextWindowPos(ImVec2(0, float(extent.height) - 42.0f), ImGuiCond_Always);
-      ImGui::SetNextWindowSize(ImVec2(float(extent.width), 42), ImGuiCond_Always);
+      ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetIO().DisplaySize.y - 42.0f), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 42), ImGuiCond_Always);
       ImGui::Begin("Taskbar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
       ImGui::Text("CAO MuJoCo Vulkan  |  %d objects  |  Orbit: left drag  Pan: middle drag  Zoom: wheel  |  %s",
                   static_cast<int>(scene.objects().size()), gSimulationRunning ? "SIMULATION RUNNING" : "BUILD MODE");
@@ -827,20 +885,20 @@ int main() {
         gSceneStatusError = false;
       }
       if (gBuildRequested) {
-        scene.buildQuadruped(); physics.rebuild(scene); physics.setRobotScript(gRobotScript); gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
+        scene.buildUnitreeH1(); physics.rebuild(scene); physics.setRobotScript(5); gRobotScript=5; gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id; gSimulationRunning = false; gBuildRequested = false;
       }
       if (gBuildBipedRequested) {
-        scene.buildBiped(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        scene.buildUnitreeH1(); gRobotScript = 5; physics.rebuild(scene); physics.setRobotScript(5);
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
         gSimulationRunning = true; gBuildBipedRequested = false;
         gSceneStatus = "Biped built: standing mode only until its COM-over-foot walk controller is implemented.";
         gSceneStatusError = false;
       }
       if (gBuildUnitreeH1Requested) {
-        scene.buildUnitreeH1(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        scene.buildUnitreeH1(); gRobotScript = 5; physics.rebuild(scene); physics.setRobotScript(5);
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
-        rebuildSceneGeometry(); gSimulationRunning = false; gBuildUnitreeH1Requested = false;
-        gSceneStatus = "Unitree H1 loaded with its original STL meshes and official MuJoCo model. It is paused until an H1 controller is integrated.";
+        rebuildSceneGeometry(); gSimulationRunning = true; gBuildUnitreeH1Requested = false;
+        gSceneStatus = "Unitree H1 pretrained policy: 0.5 m/s command, fixed upper body, physical foot contacts.";
         gSceneStatusError = false;
       }
       if (gDemoRequested) {
@@ -872,9 +930,12 @@ int main() {
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
       glfwSetWindowTitle(window, (std::string("CAO MuJoCo Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
-      check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence"); check(vkResetFences(device,1,&fence),"reset fence");
+      check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence");
       uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
-      if (acquire==VK_ERROR_OUT_OF_DATE_KHR) { recreateSwapchain(); continue; } check(acquire,"acquire image"); check(vkResetCommandBuffer(commands[image],0),"reset command");
+      if (acquire==VK_ERROR_OUT_OF_DATE_KHR) { recreateSwapchain(); continue; }
+      if (acquire==VK_SUBOPTIMAL_KHR) gFramebufferResized=true;
+      else check(acquire,"acquire image");
+      check(vkResetCommandBuffer(commands[image],0),"reset command");
       VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; check(vkBeginCommandBuffer(commands[image],&begin),"begin command");
       std::array<VkClearValue, 2> clear{}; clear[0].color={{0.025f,0.05f,0.11f,1}}; clear[1].depthStencil={1.0f,0};
       VkRenderPassBeginInfo render{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO}; render.renderPass=renderPass; render.framebuffer=framebuffers[image]; render.renderArea.extent=extent; render.clearValueCount=static_cast<uint32_t>(clear.size()); render.pClearValues=clear.data();
@@ -905,6 +966,7 @@ int main() {
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
       submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
+      check(vkResetFences(device,1,&fence),"reset fence");
       check(vkQueueSubmit(queue,1,&submit,fence),"submit"); VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
       present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image;
       const VkResult presentResult = vkQueuePresentKHR(queue,&present);

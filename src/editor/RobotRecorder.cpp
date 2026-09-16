@@ -53,6 +53,8 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
           {"torque_limits_Nm", telemetry.torqueLimitsNm},
           {"lift_assist_force_N", telemetry.liftAssistForceN},
           {"foot_friction", telemetry.footFriction},
+          {"foot_contact", telemetry.footContact},
+          {"foot_normal_force_N", telemetry.footNormalForceN},
           {"swing_lift_force_N", telemetry.swingLiftForceN},
           {"leg_state", telemetry.legState}
       }}
