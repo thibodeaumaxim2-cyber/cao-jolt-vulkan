@@ -1,6 +1,6 @@
 <mujoco model="Unitree H1 obstacle test">
-  <!-- Deployment H1 used by the matching pretrained walking policy. -->
-  <include file="h1.xml"/>
+  <!-- Full upstream H1: legs, waist yaw and both four-DOF arms. -->
+  <include file="h1_full.xml"/>
   <statistic center="1 0 1.2" extent="3.5"/>
   <asset>
     <texture type="2d" name="groundplane" builtin="checker" mark="edge"

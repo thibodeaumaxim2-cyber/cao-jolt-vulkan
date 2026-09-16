@@ -104,9 +104,12 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   const bool hasAlternatingSwings = !unitreeH1 || script == 0 || (sawLeftSwing && sawRightSwing);
   const float maxFootPlacement = std::max(leftFootMaxX - leftFootMinX, rightFootMaxX - rightFootMinX);
   const bool hasThirtyCmPlacement = script != 3 || maxFootPlacement >= 0.25f;
+  const float goalDistance = script == 5 ? std::hypot(torso->transform.position.x - 6.20f, torso->transform.position.z) : 0.0f;
+  const bool reachedGoal = script != 5 || goalDistance <= 0.60f;
   return {{"verified_steps",verifiedSteps},{"contact_clearance_m",maxContactClearance},
           {"forward_displacement_m",torso->transform.position.x-initial.x},
-          {"stable",maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement &&
+          {"goal_distance_m",goalDistance},{"reached_goal",reachedGoal},
+          {"stable",maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
                    (script == 0 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"max_horizontal_displacement_m",maxDisplacement},

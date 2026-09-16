@@ -1,5 +1,6 @@
 #include "Scene.hpp"
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 SceneObject& Scene::add(Primitive p,const Transform&t){std::string name=[&]{switch(p){case Primitive::Box:return "Box";case Primitive::Cylinder:return "Cylinder";case Primitive::Sphere:return "Sphere";default:return "Beam";}}();objects_.push_back({nextId_++,p,name+" "+std::to_string(nextId_-1),t});return objects_.back();}
 SceneObject& Scene::addWithId(uint32_t id, Primitive p, const Transform &t){if(id==0||find(id)!=nullptr)throw std::invalid_argument("Scene object ID is invalid or already used");std::string name=[&]{switch(p){case Primitive::Box:return "Box";case Primitive::Cylinder:return "Cylinder";case Primitive::Sphere:return "Sphere";default:return "Beam";}}();objects_.push_back({id,p,name+" "+std::to_string(id),t});nextId_=std::max(nextId_,id+1);return objects_.back();}
@@ -70,4 +71,14 @@ void Scene::buildUnitreeH1(){
       o.name="pyramid_box_"+std::to_string(row)+"_"+std::to_string(column); o.dynamic=true;
     }
   }
+  const std::array<Vec3, 10> obstaclePositions{{
+      {1.45f,.38f,-.65f},{1.45f,.38f,-.22f},{1.45f,.38f,.22f},
+      {3.65f,.38f,0},{3.65f,.38f,.44f},{3.65f,.38f,.88f},
+      {4.85f,.38f,-.88f},{4.85f,.38f,-.44f},{4.85f,.38f,0},{5.70f,.38f,.45f}}};
+  for (size_t i=0;i<obstaclePositions.size();++i) {
+    Transform t; t.position=obstaclePositions[i]; t.scale={.20f,.38f,.20f};
+    auto &o=add(Primitive::Box,t); o.name="nav_obstacle_"+std::to_string(i); o.dynamic=false;
+  }
+  Transform target; target.position={6.2f,.012f,0}; target.scale={.36f,.012f,.36f};
+  auto &goal=add(Primitive::Cylinder,target); goal.name="goal_circle"; goal.dynamic=false;
 }

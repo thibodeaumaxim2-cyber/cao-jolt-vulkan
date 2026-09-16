@@ -45,6 +45,8 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
           {"torso_speed_mps", telemetry.torsoSpeedMps},
           {"equilibrium_score", telemetry.equilibriumScore},
           {"walking_allowed", telemetry.walkingAllowed},
+          {"navigation_goal_distance_m", telemetry.navigationGoalDistanceM},
+          {"navigation_goal_reached", telemetry.navigationGoalReached},
           {"target_angles_rad", telemetry.targetAnglesRad},
           {"measured_angles_rad", telemetry.measuredAnglesRad},
           {"angle_error_rad", telemetry.angleErrorRad},

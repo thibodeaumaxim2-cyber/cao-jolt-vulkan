@@ -37,6 +37,9 @@ static std::string gSceneStatus;
 static bool gSceneStatusError = false;
 static bool gShowToolbar = true, gShowObjectTree = true, gShowProperties = true;
 static bool gRobotParametersExported = false;
+static bool gJumpTestRequested = false;
+static bool gNavigateGoalRequested = false;
+static bool gToggleFullBodyRequested = false;
 static double gLastX = 0.0, gLastY = 0.0;
 static void cursor(GLFWwindow *window, double x, double y) {
   if (gUiReady) ImGui_ImplGlfw_CursorPosCallback(window, x, y);
@@ -67,6 +70,8 @@ static void key(GLFWwindow *window, int key, int scancode, int action, int mods)
     gBuildRequested = true;
   } else if (key == GLFW_KEY_D) {
     gDemoRequested = true;
+  } else if (key == GLFW_KEY_J) {
+    gJumpTestRequested = true;
   } else if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_S) {
     gSaveRequested = true;
   } else if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_O) {
@@ -427,6 +432,24 @@ int main() {
       });
       objectDraws.push_back({firstIndex, 36u, objectId, false});
     };
+    auto addCylinder = [&](const std::array<float, 3> &color, uint32_t objectId) {
+      constexpr int segments = 32;
+      const uint32_t firstVertex = static_cast<uint32_t>(vertices.size());
+      const uint32_t firstIndex = static_cast<uint32_t>(indices.size());
+      vertices.push_back({{0, -0.46f, 0}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
+      vertices.push_back({{0, 0.46f, 0}, {color[0], color[1], color[2]}});
+      for (int i = 0; i < segments; ++i) {
+        const float angle = 6.2831853f * static_cast<float>(i) / segments;
+        const float x = .46f * std::cos(angle), z = .46f * std::sin(angle);
+        vertices.push_back({{x, -.46f, z}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
+        vertices.push_back({{x, .46f, z}, {color[0], color[1], color[2]}});
+      }
+      for (int i = 0; i < segments; ++i) {
+        const uint32_t a = firstVertex + 2 + 2 * i, b = firstVertex + 2 + 2 * ((i + 1) % segments);
+        indices.insert(indices.end(), {firstVertex,a,b, firstVertex+1,b+1,a+1, a,a+1,b+1,b+1,b,a});
+      }
+      objectDraws.push_back({firstIndex, static_cast<uint32_t>(segments * 12), objectId, false});
+    };
     auto addUnitreeH1Mesh = [&](const SceneObject &object) {
       const char *meshName = unitreeH1MeshName(object.name);
       if (!meshName) return false;
@@ -473,7 +496,8 @@ int main() {
     }};
     for (const SceneObject &object : scene.objects()) {
       const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
-      addBlock(layerColors[layer], object.id);
+      if (object.primitive == Primitive::Cylinder) addCylinder({{0.12f, 0.95f, 0.35f}}, object.id);
+      else addBlock(layerColors[layer], object.id);
     }
     auto buffer = [&](VkDeviceSize capacity, VkBufferUsageFlags usage, const void *source, VkDeviceSize sourceSize, VkBuffer &outBuffer, VkDeviceMemory &outMemory) {
       VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; info.size=capacity; info.usage=usage; info.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
@@ -505,7 +529,8 @@ int main() {
       for (const SceneObject &object : scene.objects()) {
         if (scene.isUnitreeH1() && addUnitreeH1Mesh(object)) continue;
         const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
-        addBlock(layerColors[layer], object.id);
+        if (object.primitive == Primitive::Cylinder) addCylinder({{0.12f, 0.95f, 0.35f}}, object.id);
+        else addBlock(layerColors[layer], object.id);
       }
       if (vertices.size() > h1MeshVertexCapacity || indices.size() > h1MeshIndexCapacity)
         throw std::runtime_error("Unitree H1 mesh set exceeds the reserved Vulkan scene buffer");
@@ -634,6 +659,9 @@ int main() {
           if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
           if (ImGui::MenuItem("Reset H1", "B")) gBuildUnitreeH1Requested = true;
           if (ImGui::MenuItem("Drop H1", "D")) gDemoRequested = true;
+          if (ImGui::MenuItem("Jump test (varied impulses)", "J")) gJumpTestRequested = true;
+          if (ImGui::MenuItem("Macro AI: go to circle", "G")) gNavigateGoalRequested = true;
+          if (ImGui::MenuItem("Toggle full-body H1 pose mode")) gToggleFullBodyRequested = true;
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -695,6 +723,9 @@ int main() {
       if (ImGui::Button("Import H1 Unitree walk")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
       ImGui::TextUnformatted("Unitree pretrained locomotion"); ImGui::SameLine();
       if (ImGui::Button("Drop robot")) gDemoRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Jump test")) gJumpTestRequested = true; ImGui::SameLine();
+      if (ImGui::Button("Macro AI: go to circle")) gNavigateGoalRequested = true; ImGui::SameLine();
+      if (ImGui::Button(physics.fullBodyMode() ? "Use walking H1" : "Enable full-body H1")) gToggleFullBodyRequested = true; ImGui::SameLine();
       if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::Separator();
       ImGui::TextDisabled("Window controls");
@@ -732,6 +763,20 @@ int main() {
       ImGui::Text("Telemetry | torso %.3f m/s | cycle %.2f | swing leg %d",
                   robotTelemetry.torsoSpeedMps, robotTelemetry.gaitCycle,
                   robotTelemetry.activeSwingLeg);
+      ImGui::Text("Macro AI | goal %.2f m | %s", robotTelemetry.navigationGoalDistanceM,
+                  robotTelemetry.navigationGoalReached ? "REACHED" : "navigating");
+      ImGui::TextDisabled(physics.fullBodyMode() ? "Full-body pose mode: waist yaw + 8 arm joints active" :
+          "Arms/waist require full-body pose mode");
+      if (physics.fullBodyMode()) {
+        static const char *fullBodyGoals[] = {"Neutral stance", "Kneel left", "Kneel right", "Salute"};
+        int goal = physics.fullBodyGoal();
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::Combo("Full-body AI goal", &goal, fullBodyGoals, IM_ARRAYSIZE(fullBodyGoals))) {
+          physics.setFullBodyGoal(goal); gSimulationRunning = true;
+          gSceneStatus = std::string("Full-body AI goal: ") + fullBodyGoals[goal];
+          gSceneStatusError = false;
+        }
+      }
       ImGui::Text("Equilibrium AI: %.0f%% | walking %s",
                   robotTelemetry.equilibriumScore * 100.0f,
                   robotTelemetry.walkingAllowed ? "allowed" : "paused");
@@ -903,6 +948,25 @@ int main() {
       }
       if (gDemoRequested) {
         scene.buildQuadruped(); physics.rebuild(scene); physics.setRobotScript(gRobotScript); physics.demolish(scene); gSimulationRunning = true; gDemoRequested = false;
+      }
+      if (gJumpTestRequested) {
+        physics.startJumpTest(); gSimulationRunning = true; gJumpTestRequested = false;
+        gSceneStatus = "H1 jump test: varied lift, lateral impulse, and occasional high-tilt fall.";
+        gSceneStatusError = false;
+      }
+      if (gNavigateGoalRequested) {
+        physics.startNavigation(); gSimulationRunning = true; gNavigateGoalRequested = false;
+        gSceneStatus = "Local macro AI: planning A* route to the green circle.";
+        gSceneStatusError = false;
+      }
+      if (gToggleFullBodyRequested) {
+        physics.enableFullBodyMode(!physics.fullBodyMode());
+        physics.rebuild(scene); physics.setRobotScript(gRobotScript);
+        gSimulationRunning = true; gToggleFullBodyRequested = false;
+        gSceneStatus = physics.fullBodyMode() ?
+            "Full-body H1 pose mode: waist yaw and both arms are torque-controlled. Walking policy is not used for gestures." :
+            "H1 pretrained walking mode restored.";
+        gSceneStatusError = false;
       }
       if (gSimulationRunning && !simulationWasRunning) {
         frameRecorder.start(gRobotScript);

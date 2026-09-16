@@ -23,6 +23,8 @@ struct RobotTelemetry {
   float gaitCycle = 0.0f;
   float torsoSpeedMps = 0.0f;
   float equilibriumScore = 0.0f;
+  float navigationGoalDistanceM = 0.0f;
+  bool navigationGoalReached = false;
   bool walkingAllowed = false;
   std::array<bool,2> footContact{};
   std::array<float,2> footNormalForceN{};
@@ -55,6 +57,12 @@ class MuJoCoBridge {
   void rebuild(Scene&);
   void step(Scene&, float seconds);
   void demolish(const Scene&);
+  void startJumpTest();
+  void startNavigation();
+  void enableFullBodyMode(bool enabled);
+  bool fullBodyMode() const;
+  void setFullBodyGoal(int goal);
+  int fullBodyGoal() const;
   void setRobotScript(int script);
   void setStandingTuning(const StandingTuning& tuning);
   int robotScript() const;

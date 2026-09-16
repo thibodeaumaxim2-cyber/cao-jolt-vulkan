@@ -1,4 +1,6 @@
 #include "MuJoCoBridge.hpp"
+#include "NavigationMacroPolicy.hpp"
+#include "FullBodyGoalPolicy.hpp"
 #include "UnitreePolicy.hpp"
 
 #include <mujoco/mujoco.h>
@@ -11,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <queue>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -102,14 +105,75 @@ constexpr std::array<H1GaitProfile, 3> kH1GaitProfiles{{
     {2.70f, 0.060f, 0.270f, 0.072f, 0.020f},
 }};
 
+constexpr std::array<std::array<float, 2>, 16> kNavigationObstacles{{
+    {{1.45f, -0.65f}}, {{1.45f, -0.22f}}, {{1.45f, 0.22f}},
+    {{2.40f, -0.38f}}, {{2.40f, 0.00f}}, {{2.40f, 0.38f}},
+    {{2.78f, -0.19f}}, {{2.78f, 0.19f}}, {{3.16f, 0.00f}},
+    {{3.65f, 0.00f}}, {{3.65f, 0.44f}}, {{3.65f, 0.88f}},
+    {{4.85f, -0.88f}}, {{4.85f, -0.44f}}, {{4.85f, 0.00f}},
+    {{5.70f, 0.45f}}
+}};
+
+std::vector<std::array<float, 2>> makeNavigationPath() {
+  constexpr float cell = 0.25f, minX = -0.50f, minY = -1.50f;
+  constexpr int width = 31, height = 13;
+  const auto node = [](int x, int y) { return y * 31 + x; };
+  const auto toCell = [](float value, float minimum) { return static_cast<int>(std::round((value - minimum) / cell)); };
+  const int start = node(toCell(0.0f, minX), toCell(0.0f, minY));
+  const int goal = node(toCell(6.20f, minX), toCell(0.0f, minY));
+  std::array<bool, width * height> blocked{};
+  for (const auto &obstacle : kNavigationObstacles) {
+    const int cx = toCell(obstacle[0], minX), cy = toCell(obstacle[1], minY);
+    for (int y = cy - 1; y <= cy + 1; ++y) for (int x = cx - 1; x <= cx + 1; ++x)
+      if (x >= 0 && x < width && y >= 0 && y < height) blocked[node(x, y)] = true;
+  }
+  blocked[start] = false; blocked[goal] = false;
+  struct Entry { float score; int value; bool operator<(const Entry &other) const { return score > other.score; } };
+  std::priority_queue<Entry> open;
+  std::array<float, width * height> cost; cost.fill(std::numeric_limits<float>::infinity());
+  std::array<int, width * height> parent; parent.fill(-1);
+  cost[start] = 0.0f; open.push({0.0f, start});
+  constexpr std::array<std::array<int, 2>, 8> directions{{{{1,0}},{{-1,0}},{{0,1}},{{0,-1}},{{1,1}},{{1,-1}},{{-1,1}},{{-1,-1}}}};
+  while (!open.empty()) {
+    const int current = open.top().value; open.pop();
+    if (current == goal) break;
+    const int x = current % width, y = current / width;
+    for (const auto &delta : directions) {
+      const int nx = x + delta[0], ny = y + delta[1];
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height || blocked[node(nx, ny)]) continue;
+      const int next = node(nx, ny);
+      const float nextCost = cost[current] + (delta[0] && delta[1] ? 1.4142f : 1.0f);
+      if (nextCost >= cost[next]) continue;
+      cost[next] = nextCost; parent[next] = current;
+      const float heuristic = std::hypot(static_cast<float>(nx - goal % width), static_cast<float>(ny - goal / width));
+      open.push({nextCost + heuristic, next});
+    }
+  }
+  std::vector<std::array<float, 2>> path;
+  for (int current = goal; current >= 0; current = parent[current]) {
+    path.push_back({minX + cell * static_cast<float>(current % width), minY + cell * static_cast<float>(current / width)});
+    if (current == start) break;
+  }
+  std::reverse(path.begin(), path.end());
+  return path;
+}
+
 } // namespace
 
 struct MuJoCoBridge::Impl {
   UnitreePolicy unitreePolicy;
+  NavigationMacroPolicy navigationMacro;
+  FullBodyGoalPolicy fullBodyPolicy;
   bool officialPolicy = false;
+  bool fullBodyMode = false;
+  int fullBodyGoal = 0;
   double policyAccumulator = 0;
   int policySteps = 0;
   std::array<float,10> officialAction{};
+  bool jumpPending = false;
+  int jumpIndex = 0;
+  std::vector<std::array<float, 2>> navigationPath;
+  size_t navigationWaypoint = 0;
   struct H1MotionReferenceSample { bool leftSwing; float stride; float knee; float ankle; float arm; };
   mjModel *model = nullptr;
   mjData *data = nullptr;
@@ -161,12 +225,17 @@ void MuJoCoBridge::rebuild(Scene &scene) {
   impl_->legCount = impl_->unitreeH1 ? 0u : impl_->biped ? 2u : kRobotLegCount;
   char error[1024]{};
   if (impl_->unitreeH1) {
-    impl_->officialPolicy = impl_->script == 5;
+  impl_->officialPolicy = impl_->script == 5;
+  impl_->jumpPending = false;
+  impl_->jumpIndex = 0;
     auto h1Scene = std::filesystem::path(CAO_SOURCE_DIR) / "third_party" / "unitree_mujoco" /
         "unitree_robots" / "h1" / "scene.xml";
     if (impl_->officialPolicy) {
-      h1Scene = std::filesystem::path(CAO_SOURCE_DIR) / "assets/unitree_h1/scene.xml";
+      h1Scene = std::filesystem::path(CAO_SOURCE_DIR) / "assets" / "unitree_h1" /
+          (impl_->fullBodyMode ? "scene_full.xml" : "scene.xml");
       impl_->unitreePolicy.load((h1Scene.parent_path() / "weights.json").string());
+      impl_->navigationMacro.load((std::filesystem::path(CAO_SOURCE_DIR) / "assets" / "navigation_macro_policy.json").string());
+      if (impl_->fullBodyMode) impl_->fullBodyPolicy.load((std::filesystem::path(CAO_SOURCE_DIR) / "assets" / "fullbody_goal_policy.json").string());
       impl_->officialAction.fill(0);
       impl_->policySteps = 0;
       impl_->policyAccumulator = 0;
@@ -194,11 +263,12 @@ void MuJoCoBridge::rebuild(Scene &scene) {
   impl_->data = mj_makeData(impl_->model);
   if (!impl_->data) throw std::runtime_error("MuJoCo could not allocate simulation data");
   if (impl_->unitreeH1 && impl_->officialPolicy &&
-      impl_->model->nu != 10)
-    throw std::runtime_error("Unitree H1 policy requires matching model dimensions (nq=" +
+      (mj_name2id(impl_->model, mjOBJ_ACTUATOR, "left_hip_yaw_joint") < 0 ||
+       mj_name2id(impl_->model, mjOBJ_ACTUATOR, "right_ankle_joint") < 0))
+    throw std::runtime_error("Unitree H1 policy requires all ten leg actuators (nq=" +
         std::to_string(impl_->model->nq) + ", nv=" + std::to_string(impl_->model->nv) +
         ", nu=" + std::to_string(impl_->model->nu) + ")");
-  if (impl_->unitreeH1 && !impl_->officialPolicy) mj_resetDataKeyframe(impl_->model, impl_->data, 0);
+  if (impl_->unitreeH1 && (!impl_->officialPolicy || impl_->fullBodyMode)) mj_resetDataKeyframe(impl_->model, impl_->data, 0);
   if (impl_->unitreeH1 && !impl_->officialPolicy) {
     // The upstream visual/collision assets use the default friction of 1.0.
     // Raise the floor and sole contact friction for a stationary strength test.
@@ -268,6 +338,10 @@ void MuJoCoBridge::rebuild(Scene &scene) {
   impl_->h1RewardCount.fill(0);
   impl_->telemetry = {};
   impl_->telemetry.linkCount = static_cast<int>(scene.objects().size());
+  if (impl_->unitreeH1 && impl_->officialPolicy) {
+    impl_->navigationPath = makeNavigationPath();
+    impl_->navigationWaypoint = impl_->navigationPath.size() > 1 ? 1 : 0;
+  }
 }
 
 void MuJoCoBridge::step(Scene &scene, float seconds) {
@@ -278,16 +352,73 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     constexpr std::array<float,10> kp{{150,150,150,200,40,150,150,150,200,40}};
     constexpr std::array<float,10> kd{{2,2,2,4,2,2,2,2,4,2}};
     auto *d=impl_->data; auto *m=impl_->model;
-    std::array<int,10> jointQpos{}, jointDof{};
+    if (impl_->jumpPending) {
+      const int jumpIndex = impl_->jumpIndex % 4;
+      const std::array<float,4> lateral{{0.0f, 0.8f, -0.7f, 0.35f}};
+      const std::array<float,4> forward{{0.3f, 0.0f, 0.25f, -0.2f}};
+      d->qvel[2] = jumpIndex == 3 ? 1.8 : 2.8;
+      d->qvel[0] = forward[jumpIndex]; d->qvel[1] = lateral[jumpIndex];
+      d->qvel[3] = jumpIndex == 3 ? 1.4 : 0.35 * lateral[jumpIndex];
+      d->qvel[4] = jumpIndex == 3 ? -0.9 : 0.0;
+      d->qvel[5] = 0.25 * forward[jumpIndex];
+      impl_->jumpPending = false;
+      ++impl_->jumpIndex;
+    }
+    // The pretrained Unitree policy is ordered by these ten leg joints. The
+    // full H1 model also has waist and arm motors, so never rely on actuator
+    // index ordering here.
+    constexpr std::array<const char *, 10> legJointNames{{
+        "left_hip_yaw_joint", "left_hip_roll_joint", "left_hip_pitch_joint", "left_knee_joint", "left_ankle_joint",
+        "right_hip_yaw_joint", "right_hip_roll_joint", "right_hip_pitch_joint", "right_knee_joint", "right_ankle_joint"}};
+    std::array<int,10> jointQpos{}, jointDof{}, legActuator{};
     for(int i=0;i<10;++i) {
-      const int joint=m->actuator_trnid[2*i];
+      const int joint=mj_name2id(m, mjOBJ_JOINT, legJointNames[i]);
+      legActuator[i]=mj_name2id(m, mjOBJ_ACTUATOR, legJointNames[i]);
       jointQpos[i]=m->jnt_qposadr[joint]; jointDof[i]=m->jnt_dofadr[joint];
     }
     impl_->policyAccumulator += seconds;
     m->opt.timestep=.002;
     while(impl_->policyAccumulator >= .002) {
       for(int i=0;i<10;++i)
-        d->ctrl[i]=kp[i]*(home[i]+.25f*impl_->officialAction[i]-d->qpos[jointQpos[i]])-kd[i]*d->qvel[jointDof[i]];
+        d->ctrl[legActuator[i]]=kp[i]*(home[i]+.25f*impl_->officialAction[i]-d->qpos[jointQpos[i]])-kd[i]*d->qvel[jointDof[i]];
+      const auto holdJoint = [&](const char *name, float target, float stiffness, float damping) {
+        const int actuator=mj_name2id(m,mjOBJ_ACTUATOR,name);
+        const int joint=mj_name2id(m,mjOBJ_JOINT,name);
+        if(actuator<0 || joint<0) return;
+        const int qpos=m->jnt_qposadr[joint], dof=m->jnt_dofadr[joint];
+        const float torque=stiffness*(target-static_cast<float>(d->qpos[qpos]))-damping*static_cast<float>(d->qvel[dof]);
+        d->ctrl[actuator]=std::clamp(torque, static_cast<float>(m->actuator_ctrlrange[2*actuator]),
+            static_cast<float>(m->actuator_ctrlrange[2*actuator+1]));
+      };
+      // Full-body neutral hold: active torso and arms without changing the
+      // ten-joint locomotion policy's observation/action contract.
+      holdJoint("torso_joint", 0.0f, 75.0f, 6.0f);
+      holdJoint("left_shoulder_pitch_joint", 0.18f, 18.0f, 2.0f);
+      holdJoint("right_shoulder_pitch_joint", 0.18f, 18.0f, 2.0f);
+      holdJoint("left_shoulder_roll_joint", 0.05f, 12.0f, 1.5f);
+      holdJoint("right_shoulder_roll_joint", -0.05f, 12.0f, 1.5f);
+      holdJoint("left_shoulder_yaw_joint", 0.0f, 8.0f, 1.0f);
+      holdJoint("right_shoulder_yaw_joint", 0.0f, 8.0f, 1.0f);
+      holdJoint("left_elbow_joint", 0.45f, 8.0f, 1.0f);
+      holdJoint("right_elbow_joint", 0.45f, 8.0f, 1.0f);
+      if (impl_->fullBodyMode) {
+        constexpr std::array<const char *,19> names{{"torso_joint","left_hip_yaw_joint","left_hip_roll_joint","left_hip_pitch_joint","left_knee_joint","left_ankle_joint","right_hip_yaw_joint","right_hip_roll_joint","right_hip_pitch_joint","right_knee_joint","right_ankle_joint","left_shoulder_pitch_joint","left_shoulder_roll_joint","left_shoulder_yaw_joint","left_elbow_joint","right_shoulder_pitch_joint","right_shoulder_roll_joint","right_shoulder_yaw_joint","right_elbow_joint"}};
+        constexpr std::array<float,19> scales{{1.2f,.43f,.43f,1.57f,2.05f,.87f,.43f,.43f,1.57f,2.05f,.87f,2.2f,1.5f,2.2f,2.0f,2.2f,1.5f,2.2f,2.0f}};
+        std::array<float,42> input{};
+        for(size_t i=0;i<names.size();++i) { const int joint=mj_name2id(m,mjOBJ_JOINT,names[i]); input[i]=static_cast<float>(d->qpos[m->jnt_qposadr[joint]])/scales[i]; input[19+i]=.08f*static_cast<float>(d->qvel[m->jnt_dofadr[joint]]); }
+        input[38+std::clamp(impl_->fullBodyGoal,0,3)]=1.0f;
+        const auto pose=impl_->fullBodyPolicy.infer(input);
+        for(size_t i=0;i<names.size();++i) holdJoint(names[i], pose[i]*scales[i], i<11 ? 90.0f : 22.0f, i<11 ? 8.0f : 2.0f);
+        // The pose network controls joints, not the floating base. Keep its
+        // correction task physically meaningful by applying only bounded IMU
+        // stabilization torques to the free pelvis while contacts settle.
+        const float w=static_cast<float>(d->qpos[3]), x=static_cast<float>(d->qpos[4]);
+        const float y=static_cast<float>(d->qpos[5]), z=static_cast<float>(d->qpos[6]);
+        const float roll=std::atan2(2.0f*(w*x+y*z),1.0f-2.0f*(x*x+y*y));
+        const float pitch=std::asin(std::clamp(2.0f*(w*y-z*x),-1.0f,1.0f));
+        d->qfrc_applied[3]=std::clamp(-420.0f*roll-75.0f*static_cast<float>(d->qvel[3]),-220.0f,220.0f);
+        d->qfrc_applied[4]=std::clamp(-480.0f*pitch-85.0f*static_cast<float>(d->qvel[4]),-240.0f,240.0f);
+      }
       mj_step(m,d);
       ++impl_->policySteps;
       if(impl_->policySteps%10==0) {
@@ -295,7 +426,42 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
         for(int i=0;i<3;++i) obs[i]=.25f*d->qvel[3+i];
         const double w=d->qpos[3],x=d->qpos[4],y=d->qpos[5],z=d->qpos[6];
         obs[3]=2*(-z*x+w*y); obs[4]=-2*(z*y+w*x); obs[5]=1-2*(w*w+z*z);
-        obs[6]=1.0f; // 0.5 m/s forward command, scaled by 2.
+        // A* supplies the next collision-free waypoint. Convert the world
+        // vector into H1's body frame and use Unitree's velocity/yaw command.
+        const float robotX = static_cast<float>(d->qpos[0]);
+        const float robotY = static_cast<float>(d->qpos[1]);
+        if (impl_->navigationWaypoint < impl_->navigationPath.size()) {
+          const auto target = impl_->navigationPath[impl_->navigationWaypoint];
+          if (std::hypot(target[0] - robotX, target[1] - robotY) < 0.30f &&
+              impl_->navigationWaypoint + 1 < impl_->navigationPath.size()) ++impl_->navigationWaypoint;
+        }
+        const auto target = impl_->navigationPath.empty() ? std::array<float, 2>{{robotX, robotY}} :
+            impl_->navigationPath[impl_->navigationWaypoint];
+        const float dx = target[0] - robotX, dy = target[1] - robotY;
+        const float distance = std::hypot(dx, dy);
+        const float yaw = std::atan2(2.0f * static_cast<float>(w * z + x * y),
+                                     1.0f - 2.0f * static_cast<float>(y * y + z * z));
+        const float desiredYaw = distance > 0.05f ? std::atan2(dy, dx) : yaw;
+        const float yawError = std::atan2(std::sin(desiredYaw - yaw), std::cos(desiredYaw - yaw));
+        const float localX = std::cos(yaw) * dx + std::sin(yaw) * dy;
+        const float localY = -std::sin(yaw) * dx + std::cos(yaw) * dy;
+        const auto macro = impl_->navigationMacro.infer({{
+            std::clamp(localX / 1.5f, -1.0f, 1.0f), std::clamp(localY / 1.5f, -1.0f, 1.0f),
+            std::clamp(yawError / 1.2f, -1.0f, 1.0f), std::clamp(distance / 2.0f, 0.0f, 1.0f)}});
+        // A* supplies the collision-free nominal direction. The local neural
+        // macro is the command gate: if it cannot produce a meaningful
+        // locomotion intent, no walking command reaches the low-level policy.
+        // Direction stays geometric because a tiny learned steering drift can
+        // accumulate into a collision over this long obstacle course.
+        const float macroPlanar = std::hypot(macro[0], macro[1]);
+        const bool macroWantsToNavigate = macroPlanar > 0.01f;
+        const float cruise = std::min(0.50f, distance * 2.0f);
+        const float nominalX = distance > 0.01f ? cruise * localX / distance : 0.0f;
+        const float nominalY = distance > 0.01f ? cruise * localY / distance : 0.0f;
+        obs[6] = macroWantsToNavigate ? std::clamp(nominalX, -0.50f, 0.50f) : 0.0f;
+        obs[7] = macroWantsToNavigate ? std::clamp(nominalY, -0.50f, 0.50f) : 0.0f;
+        const float nominalYaw = std::clamp(2.0f * yawError, -0.20f, 0.20f);
+        obs[8] = macroWantsToNavigate ? nominalYaw : 0.0f;
         for(int i=0;i<10;++i) {
           obs[9+i]=d->qpos[jointQpos[i]]-home[i]; obs[19+i]=.05f*d->qvel[jointDof[i]];
           obs[29+i]=impl_->officialAction[i];
@@ -314,6 +480,8 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     t.activeSwingLeg=t.gaitCycle<.5f ? 0:1;
     t.walkingAllowed=true;
     t.equilibriumScore=std::clamp(static_cast<float>((d->qpos[2]-.65)/.35),0.f,1.f);
+    t.navigationGoalDistanceM = std::hypot(static_cast<float>(d->qpos[0] - 6.20), static_cast<float>(d->qpos[1]));
+    t.navigationGoalReached = t.navigationGoalDistanceM <= 0.35f;
     for(int leg=0;leg<2;++leg) {
       const int foot=mj_name2id(m,mjOBJ_BODY,leg==0 ? "left_ankle_link":"right_ankle_link");
       for(int i=0;i<d->ncon;++i) {
@@ -760,6 +928,26 @@ void MuJoCoBridge::demolish(const Scene &) {
   impl_->data->qvel[1] = -1.0;
   impl_->data->qvel[2] = 2.5;
 }
+
+void MuJoCoBridge::startJumpTest() {
+  if (!impl_ || !impl_->unitreeH1) return;
+  impl_->jumpPending = true;
+}
+
+void MuJoCoBridge::startNavigation() {
+  if (!impl_ || !impl_->officialPolicy) return;
+  impl_->navigationPath = makeNavigationPath();
+  impl_->navigationWaypoint = impl_->navigationPath.size() > 1 ? 1 : 0;
+}
+
+void MuJoCoBridge::enableFullBodyMode(bool enabled) {
+  if (!impl_) return;
+  impl_->fullBodyMode = enabled;
+}
+
+bool MuJoCoBridge::fullBodyMode() const { return impl_ && impl_->fullBodyMode; }
+void MuJoCoBridge::setFullBodyGoal(int goal) { if (impl_) impl_->fullBodyGoal=std::clamp(goal,0,3); }
+int MuJoCoBridge::fullBodyGoal() const { return impl_ ? impl_->fullBodyGoal : 0; }
 
 void MuJoCoBridge::setRobotScript(int script) {
   if (!impl_->ready) return;

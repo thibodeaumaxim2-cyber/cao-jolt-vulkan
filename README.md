@@ -76,7 +76,40 @@ Unitree walk button (or select that motion script for an existing H1). This
 loads Unitree's matching ten-joint deployment model and recurrent walking
 policy. Selecting the mode rebuilds the physics model on its next step.
 The upper body is fixed as in the training model. Vulkan remains the renderer.
-Forward velocity command is currently 0.5 m/s.
+Forward velocity command is currently capped at 0.5 m/s.
+
+The default H1 scene is a navigation course: six movable pyramid boxes, ten
+fixed barriers, and a green circular goal at `(6.2 m, 0 m)`. A native A*
+planner builds a 25 cm grid route around inflated obstacle cells and sends the
+next waypoint as forward, lateral, and yaw commands to the Unitree policy.
+The goal test requires a final distance of 60 cm or less; it does not fake the
+robot's location or bypass physical collisions.
+
+**Local macro AI:** `assets/navigation_macro_policy.json` is a small PyTorch-
+trained 4→64→3 policy, run directly in C++ with no Python dependency at
+runtime. It interprets the body-frame A* waypoint and gates the navigation
+command; the deterministic A* vector remains authoritative for steering because
+even small learned lateral errors accumulated into obstacle contacts in the
+physical simulation. Re-export it after changing its teacher with
+`.venv/bin/python tools/train_navigation_macro.py`. The current Unitree policy
+has a rigid upper body and no arm joints, so saluting or torso-bending is shown
+as unavailable rather than simulated deceptively; those actions require a
+separate full-body H1 model and policy.
+
+## Full-body goal policy
+
+`tools/train_fullbody_goal_policy.py` trains and exports
+`assets/fullbody_goal_policy.json` from randomized states of the full Unitree
+H1 MuJoCo model. It accepts 19 joint positions, 19 joint velocities, and one
+of four goals (`neutral`, `kneel_left`, `kneel_right`, `salute`), then predicts
+19 safe joint targets. This is a behaviour-cloning bootstrap, not a claim of
+hardware-ready reinforcement learning: its targets are conservative poses and
+the next phase is reward-based fine-tuning with contact, balance, energy, and
+goal-distance rewards.
+
+```bash
+.venv/bin/python tools/train_fullbody_goal_policy.py
+```
 
 Run the eight-second contact-based regression with
 `./build/cao-headless h1unitree --quick`, or a 60-second run without
