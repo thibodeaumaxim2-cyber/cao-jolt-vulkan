@@ -60,15 +60,16 @@ void Scene::buildUnitreeH1(){
   part("left_shoulder_yaw_link", {.12f,.16f,.12f}); part("left_elbow_link_ball_hand", {.10f,.24f,.10f});
   part("right_shoulder_pitch_link", {.12f,.14f,.12f}); part("right_shoulder_roll_link", {.12f,.14f,.12f});
   part("right_shoulder_yaw_link", {.12f,.16f,.12f}); part("right_elbow_link_ball_hand", {.10f,.24f,.10f});
-  // Physical obstacle test: three staggered rows, ahead of H1 on its
-  // forward +X axis. Names match bodies in assets/unitree_h1/scene.xml.
+  // MuJoCo is Z-up and stores box half-extents; CAO is Y-up and stores full
+  // dimensions. Keep these proxies numerically identical to the MuJoCo course.
   for (int row=0; row<3; ++row) {
     const int count=3-row;
     for (int column=0; column<count; ++column) {
-      Transform t; t.position={2.4f+0.38f*row, 0.20f+0.38f*row,
-          (column-(count-1)*0.5f)*0.38f}; t.scale={.18f,.18f,.18f};
+      const float mjY=.20f+.36f*row;
+      const float mjZ=(column-(count-1)*0.5f)*.38f;
+      Transform t; t.position={2.4f+.38f*row, mjZ, mjY}; t.scale={.36f,.36f,.36f};
       auto &o=add(Primitive::Box,t);
-      o.name="pyramid_box_"+std::to_string(row)+"_"+std::to_string(column); o.dynamic=true;
+      o.name="pyramid_box_"+std::to_string(row)+"_"+std::to_string(column); o.dynamic=false;
     }
   }
   const std::array<Vec3, 10> obstaclePositions{{
@@ -76,9 +77,9 @@ void Scene::buildUnitreeH1(){
       {3.65f,.38f,0},{3.65f,.38f,.44f},{3.65f,.38f,.88f},
       {4.85f,.38f,-.88f},{4.85f,.38f,-.44f},{4.85f,.38f,0},{5.70f,.38f,.45f}}};
   for (size_t i=0;i<obstaclePositions.size();++i) {
-    Transform t; t.position=obstaclePositions[i]; t.scale={.20f,.38f,.20f};
+    Transform t; t.position=obstaclePositions[i]; t.scale={.40f,.76f,.40f};
     auto &o=add(Primitive::Box,t); o.name="nav_obstacle_"+std::to_string(i); o.dynamic=false;
   }
-  Transform target; target.position={6.2f,.012f,0}; target.scale={.36f,.012f,.36f};
+  Transform target; target.position={6.2f,.012f,0}; target.scale={.72f,.024f,.72f};
   auto &goal=add(Primitive::Cylinder,target); goal.name="goal_circle"; goal.dynamic=false;
 }

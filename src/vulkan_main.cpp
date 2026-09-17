@@ -422,7 +422,10 @@ int main() {
     auto addBlock = [&](const std::array<float, 3> &color, uint32_t objectId) {
       const uint32_t firstVertex = static_cast<uint32_t>(vertices.size());
       const uint32_t firstIndex = static_cast<uint32_t>(indices.size());
-      constexpr float h = 0.46f;
+      // The physics bridge creates a box with half-extents
+      // transform.scale * 0.5.  Keep this reusable mesh as a unit cube so
+      // the model scale produces exactly the same visual and collision size.
+      constexpr float h = 0.5f;
       const std::array<Vertex, 8> cube{{
           {{-h,-h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
           {{ h,-h,-h}, {color[0] * 0.52f, color[1] * 0.52f, color[2] * 0.52f}},
@@ -448,13 +451,13 @@ int main() {
       constexpr int segments = 32;
       const uint32_t firstVertex = static_cast<uint32_t>(vertices.size());
       const uint32_t firstIndex = static_cast<uint32_t>(indices.size());
-      vertices.push_back({{0, -0.46f, 0}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
-      vertices.push_back({{0, 0.46f, 0}, {color[0], color[1], color[2]}});
+      vertices.push_back({{0, -0.5f, 0}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
+      vertices.push_back({{0, 0.5f, 0}, {color[0], color[1], color[2]}});
       for (int i = 0; i < segments; ++i) {
         const float angle = 6.2831853f * static_cast<float>(i) / segments;
-        const float x = .46f * std::cos(angle), z = .46f * std::sin(angle);
-        vertices.push_back({{x, -.46f, z}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
-        vertices.push_back({{x, .46f, z}, {color[0], color[1], color[2]}});
+        const float x = .5f * std::cos(angle), z = .5f * std::sin(angle);
+        vertices.push_back({{x, -.5f, z}, {color[0] * .55f, color[1] * .55f, color[2] * .55f}});
+        vertices.push_back({{x, .5f, z}, {color[0], color[1], color[2]}});
       }
       for (int i = 0; i < segments; ++i) {
         const uint32_t a = firstVertex + 2 + 2 * i, b = firstVertex + 2 + 2 * ((i + 1) % segments);
@@ -554,10 +557,20 @@ int main() {
     std::vector<VkCommandBuffer> commands(swapImageCount); VkCommandBufferAllocateInfo commandInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     commandInfo.commandPool=pool; commandInfo.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; commandInfo.commandBufferCount=swapImageCount;
     check(vkAllocateCommandBuffers(device,&commandInfo,commands.data()),"command buffers");
-    VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO}; VkSemaphore available,finished;
-    check(vkCreateSemaphore(device,&semInfo,nullptr,&available),"available semaphore"); check(vkCreateSemaphore(device,&semInfo,nullptr,&finished),"finished semaphore");
-    VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO}; fenceInfo.flags=VK_FENCE_CREATE_SIGNALED_BIT; VkFence fence;
-    check(vkCreateFence(device,&fenceInfo,nullptr,&fence),"fence");
+    // Two frames in flight lets CPU scene preparation overlap GPU rasterization
+    // without touching a swapchain image that is still in use.
+    constexpr uint32_t maxFramesInFlight = 2;
+    VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO}; fenceInfo.flags=VK_FENCE_CREATE_SIGNALED_BIT;
+    std::array<VkSemaphore, maxFramesInFlight> available{}, finished{};
+    std::array<VkFence, maxFramesInFlight> inFlight{};
+    for (uint32_t i=0; i<maxFramesInFlight; ++i) {
+      check(vkCreateSemaphore(device,&semInfo,nullptr,&available[i]),"available semaphore");
+      check(vkCreateSemaphore(device,&semInfo,nullptr,&finished[i]),"finished semaphore");
+      check(vkCreateFence(device,&fenceInfo,nullptr,&inFlight[i]),"frame fence");
+    }
+    std::vector<VkFence> imageInFlight(swapImageCount, VK_NULL_HANDLE);
+    uint32_t currentFrame = 0;
 
     VkDescriptorPoolSize poolSizes[] = {
       {VK_DESCRIPTOR_TYPE_SAMPLER, 1000}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
@@ -634,6 +647,7 @@ int main() {
       vkFreeCommandBuffers(device, pool, static_cast<uint32_t>(commands.size()), commands.data());
       commands.resize(swapImageCount); commandInfo.commandBufferCount = swapImageCount;
       check(vkAllocateCommandBuffers(device, &commandInfo, commands.data()), "resized command buffers");
+      imageInFlight.assign(swapImageCount, VK_NULL_HANDLE);
       ImGui_ImplVulkan_SetMinImageCount(imageCount);
       gFramebufferResized = false;
     };
@@ -1016,11 +1030,14 @@ int main() {
       updateCamera();
       const char *mode = gSimulationRunning ? "Simulation running" : "Simulation paused";
       glfwSetWindowTitle(window, (std::string("CAO MuJoCo Vulkan | ") + mode + " | B: reset robot | D: drop robot | Space: play/pause").c_str());
-      check(vkWaitForFences(device,1,&fence,VK_TRUE,UINT64_MAX),"wait fence");
-      uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&image);
+      check(vkWaitForFences(device,1,&inFlight[currentFrame],VK_TRUE,UINT64_MAX),"wait frame fence");
+      uint32_t image=0; VkResult acquire=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,available[currentFrame],VK_NULL_HANDLE,&image);
       if (acquire==VK_ERROR_OUT_OF_DATE_KHR) { recreateSwapchain(); continue; }
       if (acquire==VK_SUBOPTIMAL_KHR) gFramebufferResized=true;
       else check(acquire,"acquire image");
+      if (imageInFlight[image] != VK_NULL_HANDLE)
+        check(vkWaitForFences(device,1,&imageInFlight[image],VK_TRUE,UINT64_MAX),"wait image fence");
+      imageInFlight[image] = inFlight[currentFrame];
       check(vkResetCommandBuffer(commands[image],0),"reset command");
       VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; check(vkBeginCommandBuffer(commands[image],&begin),"begin command");
       std::array<VkClearValue, 2> clear{}; clear[0].color={{0.025f,0.05f,0.11f,1}}; clear[1].depthStencil={1.0f,0};
@@ -1051,16 +1068,21 @@ int main() {
       ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commands[image]);
       vkCmdEndRenderPass(commands[image]); check(vkEndCommandBuffer(commands[image]),"end command");
       VkPipelineStageFlags wait=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-      submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished;
-      check(vkResetFences(device,1,&fence),"reset fence");
-      check(vkQueueSubmit(queue,1,&submit,fence),"submit"); VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-      present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image;
+      submit.waitSemaphoreCount=1; submit.pWaitSemaphores=&available[currentFrame]; submit.pWaitDstStageMask=&wait; submit.commandBufferCount=1; submit.pCommandBuffers=&commands[image]; submit.signalSemaphoreCount=1; submit.pSignalSemaphores=&finished[currentFrame];
+      check(vkResetFences(device,1,&inFlight[currentFrame]),"reset frame fence");
+      check(vkQueueSubmit(queue,1,&submit,inFlight[currentFrame]),"submit"); VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+      present.waitSemaphoreCount=1; present.pWaitSemaphores=&finished[currentFrame]; present.swapchainCount=1; present.pSwapchains=&swapchain; present.pImageIndices=&image;
       const VkResult presentResult = vkQueuePresentKHR(queue,&present);
       if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || gFramebufferResized) recreateSwapchain(); else check(presentResult, "present");
+      currentFrame = (currentFrame + 1) % maxFramesInFlight;
     }
     vkDeviceWaitIdle(device);
     gUiReady = false; ImGui_ImplVulkan_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext(); vkDestroyDescriptorPool(device,imguiPool,nullptr);
-    vkDestroyFence(device,fence,nullptr); vkDestroySemaphore(device,finished,nullptr); vkDestroySemaphore(device,available,nullptr);
+    for (uint32_t i=0; i<maxFramesInFlight; ++i) {
+      vkDestroyFence(device,inFlight[i],nullptr);
+      vkDestroySemaphore(device,finished[i],nullptr);
+      vkDestroySemaphore(device,available[i],nullptr);
+    }
     vkDestroyCommandPool(device,pool,nullptr); vkDestroyBuffer(device,indexBuffer,nullptr); vkFreeMemory(device,indexMemory,nullptr); vkDestroyBuffer(device,vertexBuffer,nullptr); vkFreeMemory(device,vertexMemory,nullptr);
     vkDestroyPipeline(device,pipeline,nullptr); vkDestroyPipelineLayout(device,layout,nullptr); for(auto fb:framebuffers)vkDestroyFramebuffer(device,fb,nullptr); vkDestroyRenderPass(device,renderPass,nullptr); vkDestroyImageView(device,depthView,nullptr); vkDestroyImage(device,depthImage,nullptr); vkFreeMemory(device,depthMemory,nullptr); for(auto view:views)vkDestroyImageView(device,view,nullptr);
     vkDestroySwapchainKHR(device,swapchain,nullptr); physics.shutdown(); vkDestroyDevice(device,nullptr); vkDestroySurfaceKHR(instance,surface,nullptr); vkDestroyInstance(instance,nullptr); glfwDestroyWindow(window); glfwTerminate();

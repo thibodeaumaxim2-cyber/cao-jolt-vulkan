@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -15,6 +16,7 @@ void RobotFrameRecorder::start(int motionScript) {
   const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
   runId_ = std::to_string(stamp);
   elapsedSeconds_ = 0.0f;
+  sampleAccumulator_ = 0.0f;
   recording_ = true;
   complete_ = false;
   frames_ = nlohmann::json::array();
@@ -22,6 +24,16 @@ void RobotFrameRecorder::start(int motionScript) {
 
 void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const RobotTelemetry &telemetry) {
   if (!recording_) return;
+
+  // Recording is diagnostic output, so avoid constructing a full JSON scene
+  // at the display refresh rate. Fixed 30 Hz samples preserve motion analysis
+  // while removing avoidable render-thread allocation spikes.
+  const float elapsed = std::max(0.0f, deltaSeconds);
+  elapsedSeconds_ = std::min(durationSeconds_, elapsedSeconds_ + elapsed);
+  sampleAccumulator_ += elapsed;
+  constexpr float samplePeriod = 1.0f / 30.0f;
+  if (sampleAccumulator_ < samplePeriod && elapsedSeconds_ < durationSeconds_) return;
+  sampleAccumulator_ = std::fmod(sampleAccumulator_, samplePeriod);
 
   nlohmann::json links = nlohmann::json::array();
   for (const SceneObject &object : scene.objects()) {
@@ -62,7 +74,6 @@ void RobotFrameRecorder::capture(const Scene &scene, float deltaSeconds, const R
       }}
   });
 
-  elapsedSeconds_ += std::max(0.0f, deltaSeconds);
   if (elapsedSeconds_ >= durationSeconds_) {
     elapsedSeconds_ = durationSeconds_;
     recording_ = false;
@@ -79,7 +90,7 @@ bool RobotFrameRecorder::write(const std::filesystem::path &path) const {
       {"capture", {
           {"run_id", runId_},
           {"duration_seconds", durationSeconds_},
-          {"sample_rate_hz", 60},
+          {"sample_rate_hz", 30},
           {"motion_script", motionScript_},
           {"frame_count", frames_.size()}
       }},

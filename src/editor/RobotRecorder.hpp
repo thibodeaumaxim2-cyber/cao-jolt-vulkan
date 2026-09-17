@@ -21,6 +21,7 @@ class RobotFrameRecorder {
  private:
   float durationSeconds_;
   float elapsedSeconds_ = 0.0f;
+  float sampleAccumulator_ = 0.0f;
   int motionScript_ = 0;
   bool recording_ = false;
   bool complete_ = false;

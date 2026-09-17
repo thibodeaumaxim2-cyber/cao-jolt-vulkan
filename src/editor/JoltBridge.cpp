@@ -119,7 +119,12 @@ void JoltBridge::rebuild(Scene &scene) {
         &shape,
         JPH::RVec3(object.transform.position.x, object.transform.position.y,
                    object.transform.position.z),
-        JPH::Quat::sIdentity(), motion,
+        // Vulkan renders Z * Y * X Euler rotations; Jolt's Euler helper uses
+        // that same object-space orientation, so contacts cannot be offset
+        // from a visibly rotated box.
+        JPH::Quat::sEulerAngles(JPH::Vec3(object.transform.rotation.x,
+                                          object.transform.rotation.y,
+                                          object.transform.rotation.z)), motion,
         object.dynamic
             ? (scene.isQuadruped()
                 ? CaoObjectLayers::RobotLink : CaoObjectLayers::Dynamic)
