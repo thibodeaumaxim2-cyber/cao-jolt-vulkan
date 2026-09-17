@@ -494,6 +494,24 @@ int main() {
       indices.insert(indices.end(), {first, first+1, first+2, first+2, first+3, first});
     };
     constexpr float gridExtent = 5.0f, gridStep = 0.5f;
+    // A checkerboard material built into the floor geometry: no texture
+    // streaming or sampling cost, but clear visual depth and scale cues.
+    // Keep it just below the collision plane so contact-visible objects do
+    // not z-fight with it.
+    auto addFloorTile = [&](float x0, float z0, const std::array<float, 3> &color) {
+      const uint32_t first = static_cast<uint32_t>(vertices.size());
+      constexpr float y = -0.02f;
+      vertices.insert(vertices.end(), {{{x0,y,z0},{color[0],color[1],color[2]}},
+          {{x0+gridStep,y,z0},{color[0],color[1],color[2]}},
+          {{x0+gridStep,y,z0+gridStep},{color[0],color[1],color[2]}},
+          {{x0,y,z0+gridStep},{color[0],color[1],color[2]}}});
+      indices.insert(indices.end(), {first,first+1,first+2,first+2,first+3,first});
+    };
+    const std::array<float, 3> floorDark{{0.045f,0.075f,0.105f}};
+    const std::array<float, 3> floorLight{{0.075f,0.120f,0.155f}};
+    for (int x=-10; x<10; ++x)
+      for (int z=-10; z<10; ++z)
+        addFloorTile(x*gridStep, z*gridStep, ((x+z)&1) ? floorDark : floorLight);
     const std::array<float, 3> gridColor{{0.12f, 0.24f, 0.31f}};
     for (int i = -10; i <= 10; ++i) {
       const float offset = static_cast<float>(i) * gridStep;

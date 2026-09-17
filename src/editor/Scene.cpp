@@ -65,9 +65,9 @@ void Scene::buildUnitreeH1(){
   for (int row=0; row<3; ++row) {
     const int count=3-row;
     for (int column=0; column<count; ++column) {
-      const float mjY=.20f+.36f*row;
-      const float mjZ=(column-(count-1)*0.5f)*.38f;
-      Transform t; t.position={2.4f+.38f*row, mjZ, mjY}; t.scale={.36f,.36f,.36f};
+      const float caoY=.18f+.36f*row;
+      const float caoZ=(column-(count-1)*0.5f)*.38f;
+      Transform t; t.position={2.4f+.38f*row, caoY, caoZ}; t.scale={.36f,.36f,.36f};
       auto &o=add(Primitive::Box,t);
       o.name="pyramid_box_"+std::to_string(row)+"_"+std::to_string(column); o.dynamic=false;
     }

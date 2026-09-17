@@ -124,7 +124,11 @@ std::vector<std::array<float, 2>> makeNavigationPath() {
   std::array<bool, width * height> blocked{};
   for (const auto &obstacle : kNavigationObstacles) {
     const int cx = toCell(obstacle[0], minX), cy = toCell(obstacle[1], minY);
-    for (int y = cy - 1; y <= cy + 1; ++y) for (int x = cx - 1; x <= cx + 1; ++x)
+    // The newly physical pyramid is tall enough to require a wider route
+    // than an individual low navigation barrier. Reserve an additional cell
+    // for H1's body envelope and turn radius.
+    const int clearance = obstacle[0] >= 2.35f && obstacle[0] <= 3.20f ? 2 : 1;
+    for (int y = cy - clearance; y <= cy + clearance; ++y) for (int x = cx - clearance; x <= cx + clearance; ++x)
       if (x >= 0 && x < width && y >= 0 && y < height) blocked[node(x, y)] = true;
   }
   blocked[start] = false; blocked[goal] = false;
