@@ -93,6 +93,16 @@ static void check(VkResult result, const char *what) {
     throw std::runtime_error(std::string(what) + " (" + std::to_string(result) + ")");
 }
 
+static VkPresentModeKHR choosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface) {
+  uint32_t count = 0;
+  check(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &count, nullptr), "present modes");
+  std::vector<VkPresentModeKHR> modes(count);
+  check(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &count, modes.data()), "present modes");
+  for (const auto mode : modes)
+    if (mode == VK_PRESENT_MODE_MAILBOX_KHR) return mode;
+  return VK_PRESENT_MODE_FIFO_KHR;
+}
+
 struct Vertex { float position[3]; float color[3]; };
 #pragma pack(push, 1)
 struct StlTriangle { float normal[3]; float vertices[9]; uint16_t attribute; };
@@ -306,7 +316,9 @@ int main() {
     swapInfo.imageColorSpace = format.colorSpace; swapInfo.imageExtent = extent; swapInfo.imageArrayLayers = 1;
     swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapInfo.preTransform = caps.currentTransform; swapInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; swapInfo.clipped = VK_TRUE;
+    // Mailbox is low-latency and can present at high-refresh rates. FIFO is
+    // the required tear-free fallback on drivers that do not expose Mailbox.
+    swapInfo.presentMode = choosePresentMode(gpu, surface); swapInfo.clipped = VK_TRUE;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE; check(vkCreateSwapchainKHR(device, &swapInfo, nullptr, &swapchain), "swapchain");
 
     uint32_t swapImageCount = 0; vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
@@ -590,7 +602,10 @@ int main() {
       imageCount = std::max(2u, resizedCaps.minImageCount);
       if (resizedCaps.maxImageCount) imageCount = std::min(imageCount, resizedCaps.maxImageCount);
       const VkSwapchainKHR oldSwapchain = swapchain;
-      swapInfo.minImageCount = imageCount; swapInfo.imageExtent = extent; swapInfo.preTransform = resizedCaps.currentTransform; swapInfo.oldSwapchain = oldSwapchain;
+      swapInfo.minImageCount = imageCount; swapInfo.imageExtent = extent;
+      swapInfo.preTransform = resizedCaps.currentTransform;
+      swapInfo.presentMode = choosePresentMode(gpu, surface);
+      swapInfo.oldSwapchain = oldSwapchain;
       check(vkCreateSwapchainKHR(device, &swapInfo, nullptr, &swapchain), "resized swapchain");
       vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
       vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
@@ -635,8 +650,14 @@ int main() {
       const Mat4 mvp = multiply(cameraMvp, model);
       std::memcpy(drawPush.mvp, mvp.v, sizeof(drawPush.mvp));
     };
+    double lastSimulationWallTime = glfwGetTime();
+    float simulationAccumulator = 0.0f;
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
+      const double wallTime = glfwGetTime();
+      const float frameDeltaSeconds = std::clamp(
+          static_cast<float>(wallTime - lastSimulationWallTime), 0.0f, 0.05f);
+      lastSimulationWallTime = wallTime;
       if (glfwWindowShouldClose(window)) break;
       if (gFramebufferResized) { recreateSwapchain(); continue; }
       ImGui_ImplVulkan_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
@@ -765,8 +786,8 @@ int main() {
                   robotTelemetry.activeSwingLeg);
       ImGui::Text("Macro AI | goal %.2f m | %s", robotTelemetry.navigationGoalDistanceM,
                   robotTelemetry.navigationGoalReached ? "REACHED" : "navigating");
-      ImGui::TextDisabled(physics.fullBodyMode() ? "Full-body pose mode: waist yaw + 8 arm joints active" :
-          "Arms/waist require full-body pose mode");
+      ImGui::TextDisabled(physics.fullBodyMode() ? "Full-body physics: torso + arms balance assist active" :
+          "Enable full-body mode to unlock torso and arms");
       if (physics.fullBodyMode()) {
         static const char *fullBodyGoals[] = {"Neutral stance", "Kneel left", "Kneel right", "Salute"};
         int goal = physics.fullBodyGoal();
@@ -964,7 +985,7 @@ int main() {
         physics.rebuild(scene); physics.setRobotScript(gRobotScript);
         gSimulationRunning = true; gToggleFullBodyRequested = false;
         gSceneStatus = physics.fullBodyMode() ?
-            "Full-body H1 pose mode: waist yaw and both arms are torque-controlled. Walking policy is not used for gestures." :
+            "Full-body H1: torso is anchored and arms actively counter tilt. Gesture targets remain balance-limited." :
             "H1 pretrained walking mode restored.";
         gSceneStatusError = false;
       }
@@ -974,17 +995,18 @@ int main() {
         frameRecordingWriteAttempted = false;
       }
       if (gSimulationRunning) {
-        constexpr float simulationDeltaSeconds = 1.0f / 60.0f;
-        // The articulated robot is considerably more stable when its motors
-        // and contacts are integrated at the same 240 Hz rate as the
-        // deterministic headless harness. Keep rendering and recording at
-        // 60 Hz, but advance the physics world in fixed-size substeps.
-        constexpr int physicsSubsteps = 4;
-        constexpr float physicsDeltaSeconds = simulationDeltaSeconds / physicsSubsteps;
-        for (int substep = 0; substep < physicsSubsteps; ++substep) {
+        // Render rate and simulation rate are deliberately independent.
+        // A 144 Hz display should make the viewport smoother, not make the
+        // robot walk 2.4 times faster. Limit catch-up work after a stall.
+        constexpr float physicsDeltaSeconds = 1.0f / 240.0f;
+        simulationAccumulator = std::min(simulationAccumulator + frameDeltaSeconds, 0.05f);
+        while (simulationAccumulator >= physicsDeltaSeconds) {
           physics.step(scene, physicsDeltaSeconds);
+          simulationAccumulator -= physicsDeltaSeconds;
         }
-        frameRecorder.capture(scene, simulationDeltaSeconds, physics.telemetry());
+        frameRecorder.capture(scene, frameDeltaSeconds, physics.telemetry());
+      } else {
+        simulationAccumulator = 0.0f;
       }
       if (frameRecorder.complete() && !frameRecordingWriteAttempted) {
         frameRecordingSaved = frameRecorder.write("robot_recording.json");

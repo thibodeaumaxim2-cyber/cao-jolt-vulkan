@@ -268,7 +268,7 @@ void MuJoCoBridge::rebuild(Scene &scene) {
     throw std::runtime_error("Unitree H1 policy requires all ten leg actuators (nq=" +
         std::to_string(impl_->model->nq) + ", nv=" + std::to_string(impl_->model->nv) +
         ", nu=" + std::to_string(impl_->model->nu) + ")");
-  if (impl_->unitreeH1 && (!impl_->officialPolicy || impl_->fullBodyMode)) mj_resetDataKeyframe(impl_->model, impl_->data, 0);
+  if (impl_->unitreeH1 && !impl_->officialPolicy) mj_resetDataKeyframe(impl_->model, impl_->data, 0);
   if (impl_->unitreeH1 && !impl_->officialPolicy) {
     // The upstream visual/collision assets use the default friction of 1.0.
     // Raise the floor and sole contact friction for a stationary strength test.
@@ -352,6 +352,7 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     constexpr std::array<float,10> kp{{150,150,150,200,40,150,150,150,200,40}};
     constexpr std::array<float,10> kd{{2,2,2,4,2,2,2,2,4,2}};
     auto *d=impl_->data; auto *m=impl_->model;
+    constexpr float gaitPeriod = 0.80f;
     if (impl_->jumpPending) {
       const int jumpIndex = impl_->jumpIndex % 4;
       const std::array<float,4> lateral{{0.0f, 0.8f, -0.7f, 0.35f}};
@@ -387,37 +388,57 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
         if(actuator<0 || joint<0) return;
         const int qpos=m->jnt_qposadr[joint], dof=m->jnt_dofadr[joint];
         const float torque=stiffness*(target-static_cast<float>(d->qpos[qpos]))-damping*static_cast<float>(d->qvel[dof]);
-        d->ctrl[actuator]=std::clamp(torque, static_cast<float>(m->actuator_ctrlrange[2*actuator]),
-            static_cast<float>(m->actuator_ctrlrange[2*actuator+1]));
+        // MuJoCo leaves ctrlrange at [0, 0] when ctrllimited is false. That
+        // means "unbounded", not "zero torque" (as used by Unitree's motor
+        // actuators). Clamp only when the model explicitly requests it.
+        d->ctrl[actuator] = m->actuator_ctrllimited[actuator]
+            ? std::clamp(torque, static_cast<float>(m->actuator_ctrlrange[2 * actuator]),
+                         static_cast<float>(m->actuator_ctrlrange[2 * actuator + 1]))
+            : torque;
       };
       // Full-body neutral hold: active torso and arms without changing the
       // ten-joint locomotion policy's observation/action contract.
-      holdJoint("torso_joint", 0.0f, 75.0f, 6.0f);
-      holdJoint("left_shoulder_pitch_joint", 0.18f, 18.0f, 2.0f);
-      holdJoint("right_shoulder_pitch_joint", 0.18f, 18.0f, 2.0f);
-      holdJoint("left_shoulder_roll_joint", 0.05f, 12.0f, 1.5f);
-      holdJoint("right_shoulder_roll_joint", -0.05f, 12.0f, 1.5f);
+      // The locomotion policy assumes an upright torso. On the physical
+      // full-body model, anchor it strongly before allowing arm motion.
+      holdJoint("torso_joint", 0.0f, 190.0f, 22.0f);
+      const float w=static_cast<float>(d->qpos[3]), x=static_cast<float>(d->qpos[4]);
+      const float y=static_cast<float>(d->qpos[5]), z=static_cast<float>(d->qpos[6]);
+      const float roll=std::atan2(2.0f*(w*x+y*z),1.0f-2.0f*(x*x+y*y));
+      const float pitch=std::asin(std::clamp(2.0f*(w*y-z*x),-1.0f,1.0f));
+      // Upper-body balance assist: small, symmetric arm shifts counter torso
+      // tilt without replacing the learned leg policy or injecting forces at
+      // the free base. Motions are bounded to remain inside a stable stance.
+      const float armRoll=std::clamp(-0.16f*roll-0.025f*static_cast<float>(d->qvel[3]),-.10f,.10f);
+      const float armPitch=std::clamp(-0.12f*pitch-0.020f*static_cast<float>(d->qvel[4]),-.08f,.08f);
+      holdJoint("left_shoulder_pitch_joint", 0.18f+armPitch, 18.0f, 2.0f);
+      holdJoint("right_shoulder_pitch_joint", 0.18f+armPitch, 18.0f, 2.0f);
+      holdJoint("left_shoulder_roll_joint", 0.05f+armRoll, 12.0f, 1.5f);
+      holdJoint("right_shoulder_roll_joint", -0.05f-armRoll, 12.0f, 1.5f);
       holdJoint("left_shoulder_yaw_joint", 0.0f, 8.0f, 1.0f);
       holdJoint("right_shoulder_yaw_joint", 0.0f, 8.0f, 1.0f);
       holdJoint("left_elbow_joint", 0.45f, 8.0f, 1.0f);
       holdJoint("right_elbow_joint", 0.45f, 8.0f, 1.0f);
-      if (impl_->fullBodyMode) {
+      if (impl_->fullBodyMode && mj_name2id(m, mjOBJ_JOINT, "torso_joint") >= 0) {
         constexpr std::array<const char *,19> names{{"torso_joint","left_hip_yaw_joint","left_hip_roll_joint","left_hip_pitch_joint","left_knee_joint","left_ankle_joint","right_hip_yaw_joint","right_hip_roll_joint","right_hip_pitch_joint","right_knee_joint","right_ankle_joint","left_shoulder_pitch_joint","left_shoulder_roll_joint","left_shoulder_yaw_joint","left_elbow_joint","right_shoulder_pitch_joint","right_shoulder_roll_joint","right_shoulder_yaw_joint","right_elbow_joint"}};
         constexpr std::array<float,19> scales{{1.2f,.43f,.43f,1.57f,2.05f,.87f,.43f,.43f,1.57f,2.05f,.87f,2.2f,1.5f,2.2f,2.0f,2.2f,1.5f,2.2f,2.0f}};
-        std::array<float,42> input{};
-        for(size_t i=0;i<names.size();++i) { const int joint=mj_name2id(m,mjOBJ_JOINT,names[i]); input[i]=static_cast<float>(d->qpos[m->jnt_qposadr[joint]])/scales[i]; input[19+i]=.08f*static_cast<float>(d->qvel[m->jnt_dofadr[joint]]); }
-        input[38+std::clamp(impl_->fullBodyGoal,0,3)]=1.0f;
-        const auto pose=impl_->fullBodyPolicy.infer(input);
-        for(size_t i=0;i<names.size();++i) holdJoint(names[i], pose[i]*scales[i], i<11 ? 90.0f : 22.0f, i<11 ? 8.0f : 2.0f);
-        // The pose network controls joints, not the floating base. Keep its
-        // correction task physically meaningful by applying only bounded IMU
-        // stabilization torques to the free pelvis while contacts settle.
-        const float w=static_cast<float>(d->qpos[3]), x=static_cast<float>(d->qpos[4]);
-        const float y=static_cast<float>(d->qpos[5]), z=static_cast<float>(d->qpos[6]);
-        const float roll=std::atan2(2.0f*(w*x+y*z),1.0f-2.0f*(x*x+y*y));
-        const float pitch=std::asin(std::clamp(2.0f*(w*y-z*x),-1.0f,1.0f));
-        d->qfrc_applied[3]=std::clamp(-420.0f*roll-75.0f*static_cast<float>(d->qvel[3]),-220.0f,220.0f);
-        d->qfrc_applied[4]=std::clamp(-480.0f*pitch-85.0f*static_cast<float>(d->qvel[4]),-240.0f,240.0f);
+        // The locomotion policy owns the ten leg motors. Replacing those
+        // commands with a pose-only network made neutral standing fall. Keep
+        // the proven leg policy intact and restrict full-body goals to the
+        // waist and arms. Neutral uses the explicit safe hold above rather
+        // than an inferred pose, so enabling this mode cannot change stance.
+        if (impl_->fullBodyGoal != 0) {
+          std::array<float,42> input{};
+          for(size_t i=0;i<names.size();++i) {
+            const int joint=mj_name2id(m,mjOBJ_JOINT,names[i]);
+            input[i]=static_cast<float>(d->qpos[m->jnt_qposadr[joint]])/scales[i];
+            input[19+i]=.08f*static_cast<float>(d->qvel[m->jnt_dofadr[joint]]);
+          }
+          input[38+std::clamp(impl_->fullBodyGoal,0,3)]=1.0f;
+          const auto pose=impl_->fullBodyPolicy.infer(input);
+          holdJoint(names[0], std::clamp(pose[0] * scales[0], -0.12f, 0.12f), 55.0f, 7.0f);
+          for (size_t i = 11; i < names.size(); ++i)
+            holdJoint(names[i], pose[i] * scales[i], 16.0f, 2.5f);
+        }
       }
       mj_step(m,d);
       ++impl_->policySteps;
@@ -466,7 +487,7 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
           obs[9+i]=d->qpos[jointQpos[i]]-home[i]; obs[19+i]=.05f*d->qvel[jointDof[i]];
           obs[29+i]=impl_->officialAction[i];
         }
-        const float phase=std::fmod(impl_->policySteps*.002/.8,1.0);
+        const float phase=std::fmod(impl_->policySteps*.002/gaitPeriod,1.0);
         obs[39]=std::sin(6.283185307f*phase); obs[40]=std::cos(6.283185307f*phase);
         impl_->officialAction=impl_->unitreePolicy.infer(obs);
       }
@@ -476,7 +497,7 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     auto &t=impl_->telemetry; t={}; t.motionScript=5;
     t.linkCount=scene.objects().size();
     t.torsoSpeedMps=std::hypot(d->qvel[0],d->qvel[1]);
-    t.gaitCycle=std::fmod(d->time/.8,1.0);
+    t.gaitCycle=std::fmod(d->time/gaitPeriod,1.0);
     t.activeSwingLeg=t.gaitCycle<.5f ? 0:1;
     t.walkingAllowed=true;
     t.equilibriumScore=std::clamp(static_cast<float>((d->qpos[2]-.65)/.35),0.f,1.f);
@@ -541,9 +562,11 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
       const int dof = impl_->model->jnt_dofadr[joint];
       const float torque = kp * (target - static_cast<float>(impl_->data->qpos[qpos])) -
           kd * static_cast<float>(impl_->data->qvel[dof]) + balanceTorque;
-      const float minimum = static_cast<float>(impl_->model->actuator_ctrlrange[2 * actuator]);
-      const float maximum = static_cast<float>(impl_->model->actuator_ctrlrange[2 * actuator + 1]);
-      impl_->data->ctrl[actuator] = std::clamp(torque, minimum, maximum);
+      impl_->data->ctrl[actuator] = impl_->model->actuator_ctrllimited[actuator]
+          ? std::clamp(torque,
+                       static_cast<float>(impl_->model->actuator_ctrlrange[2 * actuator]),
+                       static_cast<float>(impl_->model->actuator_ctrlrange[2 * actuator + 1]))
+          : torque;
     };
     float leftHipPitch = -0.40f, rightHipPitch = -0.40f;
     float leftKnee = 0.80f, rightKnee = 0.80f;

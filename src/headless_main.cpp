@@ -11,10 +11,12 @@
 
 using json = nlohmann::json;
 
-static json runTrial(const StandingTuning &tuning, int script, float durationSeconds, bool biped = false, bool unitreeH1 = false) {
+static json runTrial(const StandingTuning &tuning, int script, float durationSeconds, bool biped = false,
+                     bool unitreeH1 = false, bool fullBody = false) {
   Scene scene;
   if (unitreeH1) scene.buildUnitreeH1(); else if (biped) scene.buildBiped(); else scene.buildQuadruped();
   MuJoCoBridge physics; physics.setStandingTuning(tuning); physics.initialize();
+  physics.enableFullBodyMode(fullBody);
   physics.rebuild(scene); physics.setRobotScript(script);
   constexpr float dt = 1.0f / 240.0f;
   const int steps = static_cast<int>(240.0f * durationSeconds);
@@ -33,9 +35,12 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   const float initialRightFootRelativeHeight = rightAnkle ? rightAnkle->transform.position.y - initial.y : 0.0f;
   float maxSpeed=0, maxDisplacement=0, minHeight=std::numeric_limits<float>::max();
   float maxError=0, maxSwingFootLift=0; int saturated=0; int swingSamples=0; bool sawLeftSwing=false, sawRightSwing=false; float maxGaitCycle=0.0f; float instabilityTime=-1.0f; json samples=json::array();
-  float leftFootMinX=leftAnkle ? leftAnkle->transform.position.x : 0.0f;
+  // The generated crawler's longitudinal MuJoCo axis is Y, mapped to CAO Z.
+  // H1's imported model remains longitudinal in CAO X.
+  const auto forward = [&](const Vec3 &position) { return unitreeH1 ? position.x : position.z; };
+  float leftFootMinX=leftAnkle ? forward(leftAnkle->transform.position) : 0.0f;
   float leftFootMaxX=leftFootMinX;
-  float rightFootMinX=rightAnkle ? rightAnkle->transform.position.x : 0.0f;
+  float rightFootMinX=rightAnkle ? forward(rightAnkle->transform.position) : 0.0f;
   float rightFootMaxX=rightFootMinX;
   std::array<bool,2> wasContact{}, hadContact{};
   std::array<float,2> contactX{}, contactY{}, airHeight{};
@@ -53,8 +58,8 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
       const auto &pfoot=ankle->transform.position;
       if(m.footContact[leg]) {
         if(!wasContact[leg] && hadContact[leg] && airHeight[leg]>.02f &&
-           pfoot.x-contactX[leg]>.05f) ++verifiedSteps[leg];
-        contactX[leg]=pfoot.x; contactY[leg]=pfoot.y;
+           forward(pfoot)-contactX[leg]>.05f) ++verifiedSteps[leg];
+        contactX[leg]=forward(pfoot); contactY[leg]=pfoot.y;
         hadContact[leg]=true; airHeight[leg]=0;
       } else if(hadContact[leg]) {
         airHeight[leg]=std::max(airHeight[leg],pfoot.y-contactY[leg]);
@@ -69,11 +74,11 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
     if (m.activeSwingLeg == 1 && rightAnkle)
       maxSwingFootLift = std::max(maxSwingFootLift, rightAnkle->transform.position.y - initial.y - initialRightFootRelativeHeight);
     if (leftAnkle) {
-      const float x = leftAnkle->transform.position.x;
+      const float x = forward(leftAnkle->transform.position);
       leftFootMinX = std::min(leftFootMinX, x); leftFootMaxX = std::max(leftFootMaxX, x);
     }
     if (rightAnkle) {
-      const float x = rightAnkle->transform.position.x;
+      const float x = forward(rightAnkle->transform.position);
       rightFootMinX = std::min(rightFootMinX, x); rightFootMaxX = std::max(rightFootMaxX, x);
     }
     sawLeftSwing = sawLeftSwing || m.activeSwingLeg == 0;
@@ -107,7 +112,7 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   const float goalDistance = script == 5 ? std::hypot(torso->transform.position.x - 6.20f, torso->transform.position.z) : 0.0f;
   const bool reachedGoal = script != 5 || goalDistance <= 0.60f;
   return {{"verified_steps",verifiedSteps},{"contact_clearance_m",maxContactClearance},
-          {"forward_displacement_m",torso->transform.position.x-initial.x},
+          {"forward_displacement_m",forward(torso->transform.position)-forward(initial)},
           {"goal_distance_m",goalDistance},{"reached_goal",reachedGoal},
           {"stable",maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
                    (script == 0 || swingSamples > 0)},
@@ -125,9 +130,10 @@ int main(int argc, char **argv) {
   const std::string mode = argc > 1 ? argv[1] : "stand";
   const bool walking = mode == "walk" || mode == "tripod" || mode == "h1walk" || mode == "h1learn" || mode == "h1zmp";
   const bool biped = mode == "biped";
-  const bool unitreeH1 = mode == "h1" || mode == "h1walk" || mode == "h1learn" || mode == "h1zmp" || mode == "h1contact" || mode == "h1unitree";
+  const bool fullBody = mode == "h1full";
+  const bool unitreeH1 = mode == "h1" || mode == "h1walk" || mode == "h1learn" || mode == "h1zmp" || mode == "h1contact" || mode == "h1unitree" || fullBody;
   const bool quick = argc > 2 && std::string(argv[2]) == "--quick";
-  const int script = mode == "h1unitree" ? 5 : mode == "h1contact" ? 4 : mode == "tripod" ? 2 : mode == "h1zmp" ? 3 : mode == "h1learn" ? 2 : (mode == "walk" || mode == "h1walk") ? 1 : 0;
+  const int script = (mode == "h1unitree" || fullBody) ? 5 : mode == "h1contact" ? 4 : mode == "tripod" ? 2 : mode == "h1zmp" ? 3 : mode == "h1learn" ? 2 : (mode == "walk" || mode == "h1walk") ? 1 : 0;
   // Ten deterministic controller candidates: damping and balance gains are
   // varied around the current model, then the lowest-scoring trial wins.
   const std::array<StandingTuning,10> candidates{{
@@ -141,7 +147,7 @@ int main(int argc, char **argv) {
   const size_t candidateCount = quick || script==5 ? 1u : candidates.size();
   const float durationSeconds = quick ? 8.0f : 60.0f;
   for (size_t index = 0; index < candidateCount; ++index) {
-    json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1); trials.push_back(result);
+    json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1, fullBody); trials.push_back(result);
     if (result["score"].get<float>()<bestScore) { bestScore=result["score"]; best=result; }
   }
   json output={{"iterations",candidateCount},{"duration_seconds",durationSeconds},
