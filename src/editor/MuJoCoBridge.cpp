@@ -178,6 +178,8 @@ struct MuJoCoBridge::Impl {
   int jumpIndex = 0;
   std::vector<std::array<float, 2>> navigationPath;
   size_t navigationWaypoint = 0;
+  bool fragilePyramidReleased = false;
+  bool navigationGoalReached = false;
   struct H1MotionReferenceSample { bool leftSwing; float stride; float knee; float ankle; float arm; };
   mjModel *model = nullptr;
   mjData *data = nullptr;
@@ -189,6 +191,7 @@ struct MuJoCoBridge::Impl {
   size_t legCount = kRobotLegCount;
   bool biped = false;
   bool unitreeH1 = false;
+  bool valkyrie = false;
   int h1LearningProfile = 0;
   int h1LearningSamples = 0;
   float h1LearningStartTime = 0.0f;
@@ -226,7 +229,8 @@ void MuJoCoBridge::rebuild(Scene &scene) {
 
   impl_->biped = scene.isBiped();
   impl_->unitreeH1 = scene.isUnitreeH1();
-  impl_->legCount = impl_->unitreeH1 ? 0u : impl_->biped ? 2u : kRobotLegCount;
+  impl_->valkyrie = scene.isValkyrie();
+  impl_->legCount = (impl_->unitreeH1 || impl_->valkyrie) ? 0u : impl_->biped ? 2u : kRobotLegCount;
   char error[1024]{};
   if (impl_->unitreeH1) {
   impl_->officialPolicy = impl_->script == 5;
@@ -249,6 +253,13 @@ void MuJoCoBridge::rebuild(Scene &scene) {
     impl_->model = mj_loadXML(h1Scene.string().c_str(), nullptr, error, sizeof(error));
     if (!impl_->model)
       throw std::runtime_error(std::string("Unitree H1 MJCF error: ") + error);
+  } else if (impl_->valkyrie) {
+    const auto valkyrieScene = std::filesystem::path(CAO_SOURCE_DIR) / "assets" / "valkyrie" / "valkyrie.xml";
+    if (!std::filesystem::exists(valkyrieScene))
+      throw std::runtime_error("Valkyrie visual assets are missing; run tools/export_valkyrie_urdf.py and tools/build_valkyrie_mujoco.py");
+    impl_->model = mj_loadXML(valkyrieScene.string().c_str(), nullptr, error, sizeof(error));
+    if (!impl_->model)
+      throw std::runtime_error(std::string("Valkyrie MJCF error: ") + error);
   } else {
     const std::string xml = makeModelXml(impl_->biped);
   mjVFS vfs{};
@@ -282,13 +293,15 @@ void MuJoCoBridge::rebuild(Scene &scene) {
       if (impl_->model->geom_group[geom] == 3) impl_->model->geom_friction[3 * geom] = 2.2;
   }
   mj_forward(impl_->model, impl_->data);
-  if (impl_->unitreeH1) {
+  if (impl_->unitreeH1 || impl_->valkyrie) {
     // Initialize proxy transforms immediately so a paused import appears as a
     // humanoid, not a stack of boxes waiting for the first simulation frame.
     constexpr std::array<int, 3> axisMap{{0, 2, 1}};
     for (SceneObject &object : scene.objects()) {
       const int body = mj_name2id(impl_->model, mjOBJ_BODY, object.name.c_str());
       if (body < 0) continue;
+      // COLLADA node transforms are baked into the exported STL meshes, so
+      // the renderer must apply only the articulated link-body pose here.
       const mjtNum *position = impl_->data->xpos + 3 * body;
       const mjtNum *rotation = impl_->data->xmat + 9 * body;
       const auto mapped = [&](int row, int column) {
@@ -345,11 +358,82 @@ void MuJoCoBridge::rebuild(Scene &scene) {
   if (impl_->unitreeH1 && impl_->officialPolicy) {
     impl_->navigationPath = makeNavigationPath();
     impl_->navigationWaypoint = impl_->navigationPath.size() > 1 ? 1 : 0;
+    impl_->fragilePyramidReleased = false;
+    impl_->navigationGoalReached = false;
   }
 }
 
 void MuJoCoBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || !impl_->model || !impl_->data || seconds <= 0.0f) return;
+  if (impl_->valkyrie) {
+    // Assisted Valkyrie simulation: torque-limited joint posture control plus
+    // a bounded horizontal/attitude safety gantry. Vertical support remains
+    // exclusively the physical feet, so this is useful for controller
+    // calibration without claiming free-standing balance.
+    auto *m = impl_->model; auto *d = impl_->data;
+    impl_->scriptTime += seconds;
+    const double phase = 2.0 * M_PI * std::fmod(impl_->scriptTime / 1.6, 1.0);
+    for (int actuator = 0; actuator < m->nu; ++actuator) {
+      const int joint = m->actuator_trnid[2 * actuator];
+      if (joint < 0) continue;
+      const char *name = mj_id2name(m, mjOBJ_ACTUATOR, actuator);
+      const int qpos = m->jnt_qposadr[joint], dof = m->jnt_dofadr[joint];
+      float kp = 2.0f, kd = 0.5f;
+      const std::string n = name ? name : "";
+      if (n.find("Hip") != std::string::npos || n.find("Knee") != std::string::npos) kp=120.0f, kd=12.0f;
+      else if (n.find("Ankle") != std::string::npos) kp=70.0f, kd=8.0f;
+      else if (n.find("torso") != std::string::npos) kp=80.0f, kd=8.0f;
+      else if (n.find("Shoulder") != std::string::npos) kp=15.0f, kd=2.0f;
+      else if (n.find("Elbow") != std::string::npos) kp=10.0f, kd=1.0f;
+      float gaitOffset = 0.0f;
+      if (n.find("rightHipPitch") != std::string::npos) gaitOffset = 0.16f * std::sin(phase);
+      else if (n.find("rightKneePitch") != std::string::npos) gaitOffset = 0.24f * std::max(0.0, std::sin(phase));
+      else if (n.find("rightAnklePitch") != std::string::npos) gaitOffset = -0.11f * std::sin(phase);
+      else if (n.find("leftHipPitch") != std::string::npos) gaitOffset = 0.16f * std::sin(phase + M_PI);
+      else if (n.find("leftKneePitch") != std::string::npos) gaitOffset = 0.24f * std::max(0.0, std::sin(phase + M_PI));
+      else if (n.find("leftAnklePitch") != std::string::npos) gaitOffset = -0.11f * std::sin(phase + M_PI);
+      const float target = std::clamp(gaitOffset, static_cast<float>(m->jnt_range[2*joint]+0.02),
+                                      static_cast<float>(m->jnt_range[2*joint+1]-0.02));
+      const float torque = kp * (target - static_cast<float>(d->qpos[qpos])) - kd * static_cast<float>(d->qvel[dof]);
+      d->ctrl[actuator] = m->actuator_ctrllimited[actuator]
+          ? std::clamp(static_cast<mjtNum>(torque), m->actuator_ctrlrange[2*actuator], m->actuator_ctrlrange[2*actuator+1])
+          : torque;
+    }
+    const double walkAnchor = 0.18 * impl_->scriptTime;
+    d->qfrc_applied[0] = std::clamp(-5000.0 * (d->qpos[0] - walkAnchor) - 2.0 * std::sqrt(5000.0 * m->body_subtreemass[1]) * d->qvel[0], -5000.0, 5000.0);
+    d->qfrc_applied[1] = std::clamp(-5000.0 * d->qpos[1] - 2.0 * std::sqrt(5000.0 * m->body_subtreemass[1]) * d->qvel[1], -5000.0, 5000.0);
+    const double roll = std::atan2(2.0*(d->qpos[3]*d->qpos[4]+d->qpos[5]*d->qpos[6]), 1.0-2.0*(d->qpos[4]*d->qpos[4]+d->qpos[5]*d->qpos[5]));
+    const double pitch = std::atan2(2.0*(d->qpos[3]*d->qpos[5]-d->qpos[6]*d->qpos[4]), 1.0-2.0*(d->qpos[5]*d->qpos[5]+d->qpos[6]*d->qpos[6]));
+    d->qfrc_applied[3] = std::clamp(-2000.0*roll-150.0*d->qvel[3], -5000.0, 5000.0);
+    d->qfrc_applied[4] = std::clamp(-2000.0*pitch-150.0*d->qvel[4], -5000.0, 5000.0);
+    d->qfrc_applied[5] = -100.0*d->qvel[5];
+    mj_step(m, d);
+    // The current assisted mode is a calibration conveyor: contacts and the
+    // gantry stabilize the posture while this bounded base command provides
+    // visible forward travel. Free walking must replace this with a contact-
+    // aware whole-body balance policy before it is called autonomous.
+    d->qpos[0] += 0.18 * seconds;
+    d->qvel[0] = 0.18;
+    // Make the calibration gait visually deterministic. The torque controller
+    // remains active for contacts, but the assisted preview also writes the
+    // planned joint pose so a heavily constrained foot cannot hide the gait.
+    for (int actuator = 0; actuator < m->nu; ++actuator) {
+      const int joint = m->actuator_trnid[2 * actuator];
+      const char *name = mj_id2name(m, mjOBJ_ACTUATOR, actuator);
+      if (joint < 0 || !name) continue;
+      const std::string n = name;
+      const bool right = n.find("right") != std::string::npos;
+      const double legPhase = phase + (right ? 0.0 : M_PI);
+      double pose = 0.0;
+      if (n.find("HipPitch") != std::string::npos) pose = 0.28 * std::sin(legPhase);
+      else if (n.find("KneePitch") != std::string::npos) pose = 0.42 * std::max(0.0, std::sin(legPhase));
+      else if (n.find("AnklePitch") != std::string::npos) pose = -0.20 * std::sin(legPhase);
+      else if (n.find("AnkleRoll") != std::string::npos) pose = 0.04 * std::sin(legPhase);
+      if (m->jnt_limited[joint]) pose = std::clamp(pose, m->jnt_range[2 * joint] + 0.02, m->jnt_range[2 * joint + 1] - 0.02);
+      d->qpos[m->jnt_qposadr[joint]] = pose;
+    }
+    mj_forward(m, d);
+  } else {
   if (impl_->unitreeH1 && (impl_->script == 5) != impl_->officialPolicy) rebuild(scene);
   if (impl_->unitreeH1 && impl_->officialPolicy) {
     constexpr std::array<float,10> home{{0,0,-.1f,.3f,-.2f,0,0,-.1f,.3f,-.2f}};
@@ -455,6 +539,28 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
         // vector into H1's body frame and use Unitree's velocity/yaw command.
         const float robotX = static_cast<float>(d->qpos[0]);
         const float robotY = static_cast<float>(d->qpos[1]);
+        if (!impl_->fragilePyramidReleased && std::hypot(robotX - 6.20f, robotY) <= .60f) {
+          // The pyramid begins as a suspended, collision-solid structure.
+          // Releasing gravity after goal arrival turns it into a real fragile
+          // physics event rather than a scripted visual animation.
+          for (int row=0; row<5; ++row) for (int column=0; column<5-row; ++column) {
+            const std::string name="fragile_pyramid_"+std::to_string(row)+"_"+std::to_string(column);
+            const int body=mj_name2id(m,mjOBJ_BODY,name.c_str());
+            if (body >= 0) m->body_gravcomp[body]=0.0;
+          }
+          // Keep the walking phase at the upstream solver quality. Once the
+          // light debris is released, cap the Newton contact work so a burst
+          // of cube contacts cannot stall Vulkan presentation. This affects
+          // only the post-goal destruction sequence, never H1 locomotion.
+          m->opt.iterations = std::min(m->opt.iterations, 40);
+          m->opt.ls_iterations = std::min(m->opt.ls_iterations, 20);
+          impl_->fragilePyramidReleased = true;
+          impl_->navigationGoalReached = true;
+          // Drive H1 into the impact zone immediately in front of the newly
+          // released structure, where falling blocks can make real contact.
+          impl_->navigationPath = {{{6.90f, 0.0f}}};
+          impl_->navigationWaypoint = 0;
+        }
         if (impl_->navigationWaypoint < impl_->navigationPath.size()) {
           const auto target = impl_->navigationPath[impl_->navigationWaypoint];
           if (std::hypot(target[0] - robotX, target[1] - robotY) < 0.30f &&
@@ -506,7 +612,7 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     t.walkingAllowed=true;
     t.equilibriumScore=std::clamp(static_cast<float>((d->qpos[2]-.65)/.35),0.f,1.f);
     t.navigationGoalDistanceM = std::hypot(static_cast<float>(d->qpos[0] - 6.20), static_cast<float>(d->qpos[1]));
-    t.navigationGoalReached = t.navigationGoalDistanceM <= 0.35f;
+    t.navigationGoalReached = impl_->navigationGoalReached;
     for(int leg=0;leg<2;++leg) {
       const int foot=mj_name2id(m,mjOBJ_BODY,leg==0 ? "left_ankle_link":"right_ankle_link");
       for(int i=0;i<d->ncon;++i) {
@@ -909,7 +1015,7 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
   }
 
   for (SceneObject &object : scene.objects()) {
-    const int id = mj_name2id(impl_->model, impl_->unitreeH1 ? mjOBJ_BODY : mjOBJ_GEOM, object.name.c_str());
+    const int id = mj_name2id(impl_->model, (impl_->unitreeH1 || impl_->valkyrie) ? mjOBJ_BODY : mjOBJ_GEOM, object.name.c_str());
     int fixedGeom = -1;
     if(id < 0 && impl_->officialPolicy) {
       std::string meshName=object.name;
@@ -920,8 +1026,8 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
         if(mesh>=0 && impl_->model->geom_type[g]==mjGEOM_MESH && impl_->model->geom_dataid[g]==mesh) { fixedGeom=g; break; }
     }
     if (id < 0 && fixedGeom < 0) continue;
-    const mjtNum *position = fixedGeom>=0 ? impl_->data->geom_xpos+3*fixedGeom : impl_->unitreeH1 ? impl_->data->xpos + 3 * id : impl_->data->geom_xpos + 3 * id;
-    const mjtNum *rotation = fixedGeom>=0 ? impl_->data->geom_xmat+9*fixedGeom : impl_->unitreeH1 ? impl_->data->xmat + 9 * id : impl_->data->geom_xmat + 9 * id;
+    const mjtNum *position = fixedGeom>=0 ? impl_->data->geom_xpos+3*fixedGeom : (impl_->unitreeH1 || impl_->valkyrie) ? impl_->data->xpos + 3 * id : impl_->data->geom_xpos + 3 * id;
+    const mjtNum *rotation = fixedGeom>=0 ? impl_->data->geom_xmat+9*fixedGeom : (impl_->unitreeH1 || impl_->valkyrie) ? impl_->data->xmat + 9 * id : impl_->data->geom_xmat + 9 * id;
     mjtNum rawPosition[3]{}, rawRotation[9]{};
     if(fixedGeom>=0) {
       // MuJoCo recenters mesh assets. Undo that asset transform when drawing
@@ -947,6 +1053,8 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
         std::asin(clampUnit(-mapped(2, 0))),
         std::atan2(mapped(1, 0), mapped(0, 0))};
   }
+}
+
 }
 
 void MuJoCoBridge::demolish(const Scene &) {

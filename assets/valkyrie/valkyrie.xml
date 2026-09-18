@@ -1,0 +1,365 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="valkyrie_sim">
+  <compiler angle="radian" />
+
+  <asset>
+    <mesh name="pelvis" content_type="model/stl" file="meshes/pelvis/pelvis.stl" />
+    <mesh name="torsoyaw" content_type="model/stl" file="meshes/torso/torsoyaw.stl" />
+    <mesh name="torsopitch" content_type="model/stl" file="meshes/torso/torsopitch.stl" />
+    <mesh name="torso" content_type="model/stl" file="meshes/torso/torso.stl" />
+    <mesh name="neckj1" content_type="model/stl" file="meshes/head/neckj1.stl" />
+    <mesh name="neckj2" content_type="model/stl" file="meshes/head/neckj2.stl" />
+    <mesh name="head_multisense_no_visor" content_type="model/stl" file="meshes/head/head_multisense_no_visor.stl" />
+    <mesh name="aj1_right" content_type="model/stl" file="meshes/arms/aj1_right.stl" />
+    <mesh name="aj2_right" content_type="model/stl" file="meshes/arms/aj2_right.stl" />
+    <mesh name="aj3_right" content_type="model/stl" file="meshes/arms/aj3_right.stl" />
+    <mesh name="aj4_right" content_type="model/stl" file="meshes/arms/aj4_right.stl" />
+    <mesh name="aj5_right" content_type="model/stl" file="meshes/arms/aj5_right.stl" />
+    <mesh name="aj6_right" content_type="model/stl" file="meshes/arms/aj6_right.stl" />
+    <mesh name="palm_right" content_type="model/stl" file="meshes/arms/palm_right.stl" />
+    <mesh name="thumbj1_right" content_type="model/stl" file="meshes/fingers/thumbj1_right.stl" />
+    <mesh name="thumbj2_right" content_type="model/stl" file="meshes/fingers/thumbj2_right.stl" />
+    <mesh name="thumbj3_right" content_type="model/stl" file="meshes/fingers/thumbj3_right.stl" />
+    <mesh name="thumbj4_right" content_type="model/stl" file="meshes/fingers/thumbj4_right.stl" />
+    <mesh name="indexj1_right" content_type="model/stl" file="meshes/fingers/indexj1_right.stl" />
+    <mesh name="indexj2_right" content_type="model/stl" file="meshes/fingers/indexj2_right.stl" />
+    <mesh name="indexj3_right" content_type="model/stl" file="meshes/fingers/indexj3_right.stl" />
+    <mesh name="middlej1_right" content_type="model/stl" file="meshes/fingers/middlej1_right.stl" />
+    <mesh name="middlej2_right" content_type="model/stl" file="meshes/fingers/middlej2_right.stl" />
+    <mesh name="middlej3_right" content_type="model/stl" file="meshes/fingers/middlej3_right.stl" />
+    <mesh name="pinkyj1_right" content_type="model/stl" file="meshes/fingers/pinkyj1_right.stl" />
+    <mesh name="pinkyj2_right" content_type="model/stl" file="meshes/fingers/pinkyj2_right.stl" />
+    <mesh name="pinkyj3_right" content_type="model/stl" file="meshes/fingers/pinkyj3_right.stl" />
+    <mesh name="aj1_left" content_type="model/stl" file="meshes/arms/aj1_left.stl" />
+    <mesh name="aj2_left" content_type="model/stl" file="meshes/arms/aj2_left.stl" />
+    <mesh name="aj3_left" content_type="model/stl" file="meshes/arms/aj3_left.stl" />
+    <mesh name="aj4_left" content_type="model/stl" file="meshes/arms/aj4_left.stl" />
+    <mesh name="aj5_left" content_type="model/stl" file="meshes/arms/aj5_left.stl" />
+    <mesh name="aj6_left" content_type="model/stl" file="meshes/arms/aj6_left.stl" />
+    <mesh name="palm_left" content_type="model/stl" file="meshes/arms/palm_left.stl" />
+    <mesh name="thumbj1_left" content_type="model/stl" file="meshes/fingers/thumbj1_left.stl" />
+    <mesh name="thumbj2_left" content_type="model/stl" file="meshes/fingers/thumbj2_left.stl" />
+    <mesh name="thumbj3_left" content_type="model/stl" file="meshes/fingers/thumbj3_left.stl" />
+    <mesh name="thumbj4_left" content_type="model/stl" file="meshes/fingers/thumbj4_left.stl" />
+    <mesh name="indexj1_left" content_type="model/stl" file="meshes/fingers/indexj1_left.stl" />
+    <mesh name="indexj2_left" content_type="model/stl" file="meshes/fingers/indexj2_left.stl" />
+    <mesh name="indexj3_left" content_type="model/stl" file="meshes/fingers/indexj3_left.stl" />
+    <mesh name="middlej1_left" content_type="model/stl" file="meshes/fingers/middlej1_left.stl" />
+    <mesh name="middlej2_left" content_type="model/stl" file="meshes/fingers/middlej2_left.stl" />
+    <mesh name="middlej3_left" content_type="model/stl" file="meshes/fingers/middlej3_left.stl" />
+    <mesh name="pinkyj1_left" content_type="model/stl" file="meshes/fingers/pinkyj1_left.stl" />
+    <mesh name="pinkyj2_left" content_type="model/stl" file="meshes/fingers/pinkyj2_left.stl" />
+    <mesh name="pinkyj3_left" content_type="model/stl" file="meshes/fingers/pinkyj3_left.stl" />
+    <mesh name="lj1_right" content_type="model/stl" file="meshes/legs/lj1_right.stl" />
+    <mesh name="lj2_right" content_type="model/stl" file="meshes/legs/lj2_right.stl" />
+    <mesh name="lj3_right" content_type="model/stl" file="meshes/legs/lj3_right.stl" />
+    <mesh name="lj4_right" content_type="model/stl" file="meshes/legs/lj4_right.stl" />
+    <mesh name="lj5" content_type="model/stl" file="meshes/legs/lj5.stl" />
+    <mesh name="lj1_left" content_type="model/stl" file="meshes/legs/lj1_left.stl" />
+    <mesh name="lj2_left" content_type="model/stl" file="meshes/legs/lj2_left.stl" />
+    <mesh name="lj3_left" content_type="model/stl" file="meshes/legs/lj3_left.stl" />
+    <mesh name="lj4_left" content_type="model/stl" file="meshes/legs/lj4_left.stl" />
+  <texture name="checker" type="2d" builtin="checker" width="512" height="512" rgb1="0.12 0.14 0.18" rgb2="0.24 0.27 0.32" /><material name="floor" texture="checker" texrepeat="8 8" reflectance="0.15" /></asset>
+
+  <worldbody>
+    <geom name="floor" type="plane" size="20 20 0.1" material="floor" friction="0.9 0.02 0.001" /><body name="pelvis" pos="0 0 1.18"><freejoint name="valkyrie_root" /><inertial pos="-0.00532 -0.003512 -0.0036" mass="8.22" fullinertia="0.11866378 0.097963425 0.083854638 -0.000143482 0.003271293 0.002159545" /><geom type="mesh" mesh="pelvis" contype="0" conaffinity="0" group="1" />
+    <body name="torsoYawLink">
+      <inertial pos="0 0 -0.01" quat="-0.034567 0.707502 0.0340808 0.705042" mass="0.5" diaginertia="0.00107811 0.000620442 0.000608307" />
+      <joint name="torsoYaw" range="-1.329 1.181" actuatorfrcrange="-190 190" damping="0.1" />
+      <geom type="mesh" mesh="torsoyaw" contype="0" conaffinity="0" group="1" />
+      <body name="torsoPitchLink" pos="0.04191 0 0">
+        <inertial pos="0 0 0.005" quat="0.691414 0.691414 0.148145 -0.148145" mass="0.1" diaginertia="3.08343e-05 2.77707e-05 2.1274e-05" />
+        <joint name="torsoPitch" range="-0.13 0.666" actuatorfrcrange="-150 150" damping="0.1" axis="0 1 0" />
+        <geom type="mesh" mesh="torsopitch" contype="0" conaffinity="0" group="1" />
+        <body name="torso" pos="0 0 0.0203">
+          <inertial pos="-0.095548 -0.003337 0.243098" quat="0.69115 -0.157157 -0.16265 0.68641" mass="39.47" diaginertia="1.01087 0.903372 0.748278" />
+          <joint name="torsoRoll" range="-0.23 0.255" actuatorfrcrange="-150 150" damping="0.1" axis="1 0 0" />
+          <geom type="mesh" mesh="torso" contype="0" conaffinity="0" group="1" />
+          <body name="lowerNeckPitchLink" pos="0.0203518 0 0.33845">
+            <inertial pos="-0.02 0 0.04" quat="0.776774 -0.0791602 -0.272957 0.562005" mass="1.05" diaginertia="0.00191062 0.00185231 0.000391815" />
+            <joint name="lowerNeckPitch" range="0 1.162" actuatorfrcrange="-26 26" damping="0.1" axis="0 1 0" />
+            <geom type="mesh" mesh="neckj1" contype="0" conaffinity="0" group="1" />
+            <body name="neckYawLink" pos="-0.051924 0 0">
+              <inertial pos="-0.03 -0.01 0.15" quat="0.173574 0.706791 0.579589 0.366599" mass="1.4" diaginertia="0.00299118 0.00276837 0.00127783" />
+              <joint name="neckYaw" range="-1.0472 1.0472" actuatorfrcrange="-26 26" damping="0.1" />
+              <geom type="mesh" mesh="neckj2" contype="0" conaffinity="0" group="1" />
+              <body name="upperNeckPitchLink" pos="-0.06 0 0.195997">
+                <inertial pos="0.102036 0.00422754 0.0409152" quat="0.603288 0.115467 0.162028 0.772307" mass="5.30991" diaginertia="0.0462321 0.0454456 0.0392626" />
+                <joint name="upperNeckPitch" range="-0.872 0" actuatorfrcrange="-26 26" damping="0.1" axis="0 1 0" />
+                <geom type="mesh" mesh="head_multisense_no_visor" contype="0" conaffinity="0" group="1" />
+                <geom size="0.06555 0.06 0.02955" pos="0.133971 -5.1745e-09 0.0838526" quat="1.32395e-06 -0.997859 8.67765e-08 0.0654031" type="box" contype="0" conaffinity="0" />
+                <geom size="0.0234 0.06 0.0592" pos="0.0800519 2.30332e-07 0.00143535" quat="1.32395e-06 -0.997859 8.67765e-08 0.0654031" type="box" contype="0" conaffinity="0" />
+                <body name="hokuyo_link" pos="0.127881 2.33516e-07 -0.00607185" quat="1.32395e-06 -0.997859 8.67765e-08 0.0654031">
+                  <inertial pos="0.0324349 0.0004084 -0.0041783" quat="0.00204882 0.9034 0.000639264 0.428794" mass="0.057664" diaginertia="5.16656e-05 4.34371e-05 2.92034e-05" />
+                  <joint name="hokuyo_joint" damping="0.01" axis="1 0 0" />
+                  <geom size="0.04 0.03 0.02119" pos="0.01885 0 -0.02119" type="box" rgba="0.72941 0.35686 0.023529 1" contype="0" conaffinity="0" />
+                  <geom size="0.024425 0.0235" pos="0.03 0 0.0235" type="cylinder" rgba="0.72941 0.35686 0.023529 1" contype="0" conaffinity="0" />
+                </body>
+              </body>
+            </body>
+          </body>
+          <body name="rightShoulderPitchLink" pos="-0.0316 0 0.2984">
+            <inertial pos="-0.012 -0.251 0" quat="0.5 0.5 -0.5 0.5" mass="2.65" diaginertia="0.0148064 0.0137182 0.0105028" />
+            <joint name="rightShoulderPitch" range="-2.85 2" actuatorfrcrange="-190 190" damping="0.1" axis="0 1 0" />
+            <geom type="mesh" mesh="aj1_right" contype="0" conaffinity="0" group="1" />
+            <body name="rightShoulderRollLink" pos="0 -0.2499 0">
+              <inertial pos="-0.008513 -0.02068 0.001088" quat="0.512776 0.493273 -0.505578 0.487989" mass="3.97" diaginertia="0.0124553 0.00949615 0.00767802" />
+              <joint name="rightShoulderRoll" range="-1.266 1.519" actuatorfrcrange="-190 190" damping="0.1" axis="1 0 0" />
+              <geom type="mesh" mesh="aj2_right" contype="0" conaffinity="0" group="1" />
+              <body name="rightShoulderYawLink">
+                <inertial pos="-0.004304 -0.209832 -0.007295" quat="0.466009 0.602853 -0.415653 0.496625" mass="3.085" diaginertia="0.0421085 0.041026 0.00300598" />
+                <joint name="rightShoulderYaw" range="-3.1 2.18" actuatorfrcrange="-65 65" damping="0.1" axis="0 1 0" />
+                <geom type="mesh" mesh="aj3_right" contype="0" conaffinity="0" group="1" />
+                <body name="rightElbowPitchLink" pos="0.0254 -0.33 0">
+                  <inertial pos="-0.020344 -0.014722 -0.0223" quat="0.890096 -0.305382 0.261043 -0.21524" mass="1.83" diaginertia="0.00400574 0.00372534 0.00210039" />
+                  <joint name="rightElbowPitch" range="-0.12 2.174" actuatorfrcrange="-65 65" damping="0.1" />
+                  <geom type="mesh" mesh="aj4_right" contype="0" conaffinity="0" group="1" />
+                  <body name="rightForearmLink" pos="-0.0254 0 0">
+                    <inertial pos="0.015 -0.13 0.019564" quat="0.554288 0.767757 0.188145 -0.260605" mass="2.476" diaginertia="0.0123133 0.0115163 0.00436298" />
+                    <joint name="rightForearmYaw" range="-2.019 3.14" actuatorfrcrange="-26 26" damping="0.1" axis="0 1 0" />
+                    <geom type="mesh" mesh="aj5_right" contype="0" conaffinity="0" group="1" />
+                    <body name="rightWristRollLink" pos="0 -0.2871 0">
+                      <inertial pos="0 0 0" quat="0.701167 0.000612703 0.000607879 0.712997" mass="0.14" diaginertia="3.77221e-05 3.0249e-05 9.39494e-06" />
+                      <joint name="rightWristRoll" range="-0.625 0.62" actuatorfrcrange="-14 14" damping="0.1" axis="1 0 0" />
+                      <geom type="mesh" mesh="aj6_right" contype="0" conaffinity="0" group="1" />
+                      <body name="rightPalm">
+                        <inertial pos="0.002954 -0.052034 -0.000236" quat="0.988544 0.125738 0.0595524 0.0585119" mass="0.712" diaginertia="0.000952107 0.000713649 0.00059896" />
+                        <joint name="rightWristPitch" range="-0.49 0.36" actuatorfrcrange="-14 14" damping="0.1" />
+                        <geom type="mesh" mesh="palm_right" contype="0" conaffinity="0" group="1" />
+                        <body name="rightThumbRollLink" pos="0.0049 -0.0351 0.0228" quat="0.984805 0.173665 0 0">
+                          <inertial pos="0 0 0.01" quat="0.708373 0.0295077 0.0177328 0.704998" mass="0.017" diaginertia="3.5469e-06 2.78425e-06 1.34832e-06" />
+                          <joint name="rightThumbRoll" range="0 2.356" actuatorfrcrange="-10 10" damping="1" axis="0 1 0" />
+                          <geom type="mesh" mesh="thumbj1_right" contype="0" conaffinity="0" group="1" />
+                          <body name="rightThumbPitch1Link" pos="0 0 0.0229" quat="0.984805 -0.173665 0 0">
+                            <inertial pos="0 -0.005 0.02" quat="0.707107 0 0 0.707107" mass="0.02" diaginertia="4.582e-06 4.239e-06 1.47e-06" />
+                            <joint name="rightThumbPitch1" range="0 1.658" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                            <geom type="mesh" mesh="thumbj2_right" contype="0" conaffinity="0" group="1" />
+                            <body name="rightThumbPitch2Link" pos="0 -0.0066 0.0375">
+                              <inertial pos="0 -0.004 0.017" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.503e-06 1.266e-06 6.99e-07" />
+                              <joint name="rightThumbPitch2" range="0 1.92" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                              <geom type="mesh" mesh="thumbj3_right" contype="0" conaffinity="0" group="1" />
+                              <body name="rightThumbPitch3Link" pos="0 -0.0049 0.0275">
+                                <inertial pos="0 -0.004 0.01" quat="0.707107 0 0 0.707107" mass="0.006" diaginertia="4.06e-07 3.22e-07 2.1e-07" />
+                                <joint name="rightThumbPitch3" range="0 1.57" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                                <geom type="mesh" mesh="thumbj4_right" contype="0" conaffinity="0" group="1" />
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                        <body name="rightIndexFingerPitch1Link" pos="0.0022 -0.0976 0.0235" quat="0.996196 -0.0871393 0 0">
+                          <inertial pos="0 -0.02 0" quat="0.705999 0.70805 0.00110974 -0.0151468" mass="0.02" diaginertia="4.23337e-06 3.89184e-06 1.21379e-06" />
+                          <joint name="rightIndexFingerPitch1" range="0 1.57" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="indexj1_right" contype="0" conaffinity="0" group="1" />
+                          <body name="rightIndexFingerPitch2Link" pos="0 -0.0381 0">
+                            <inertial pos="0 -0.013 0" quat="0.726734 0.686474 0.00863291 -0.023171" mass="0.018" diaginertia="1.56295e-06 1.25616e-06 7.19891e-07" />
+                            <joint name="rightIndexFingerPitch2" range="0 1.658" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="indexj2_right" contype="0" conaffinity="0" group="1" />
+                            <body name="rightIndexFingerPitch3Link" pos="0 -0.0229 0">
+                              <inertial pos="0 -0.01 0" quat="0.72664 0.686317 -0.017283 -0.025764" mass="0.01" diaginertia="6.03471e-07 5.02964e-07 2.06565e-07" />
+                              <joint name="rightIndexFingerPitch3" range="0 1.92" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="indexj3_right" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="rightMiddleFingerPitch1Link" pos="0.0022 -0.097 -0.0119" quat="0.998134 0.061062 0 0">
+                          <inertial pos="0 -0.02 0" quat="0.706578 0.707545 0.00307719 -0.0108316" mass="0.02" diaginertia="5.14868e-06 4.59179e-06 1.32153e-06" />
+                          <joint name="rightMiddleFingerPitch1" range="0 1.658" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="middlej1_right" contype="0" conaffinity="0" group="1" />
+                          <body name="rightMiddleFingerPitch2Link" pos="0 -0.0381 0">
+                            <inertial pos="0 -0.013 0" quat="0.4723 0.506399 -0.515849 0.504374" mass="0.011" diaginertia="2.27605e-06 1.97027e-06 5.49677e-07" />
+                            <joint name="rightMiddleFingerPitch2" range="0 1.92" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="middlej2_right" contype="0" conaffinity="0" group="1" />
+                            <body name="rightMiddleFingerPitch3Link" pos="0 -0.0229 0">
+                              <inertial pos="0 -0.01 0" quat="0.744461 0.667321 -0.0066046 -0.0204209" mass="0.006" diaginertia="3.96371e-07 3.04726e-07 1.57904e-07" />
+                              <joint name="rightMiddleFingerPitch3" range="0 1.57" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="middlej3_right" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="rightPinkyPitch1Link" pos="0.0022 -0.0838 -0.041" quat="0.998134 0.061062 0 0">
+                          <inertial pos="0 -0.02 0" quat="0.706578 0.707545 0.00307719 -0.0108316" mass="0.02" diaginertia="5.14868e-06 4.59179e-06 1.32153e-06" />
+                          <joint name="rightPinkyPitch1" range="0 1.57" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="pinkyj1_right" contype="0" conaffinity="0" group="1" />
+                          <body name="rightPinkyPitch2Link" pos="0 -0.0381 0">
+                            <inertial pos="0 -0.013 0" quat="0.4723 0.506399 -0.515849 0.504374" mass="0.011" diaginertia="2.27605e-06 1.97027e-06 5.49677e-07" />
+                            <joint name="rightPinkyPitch2" range="0 1.658" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="pinkyj2_right" contype="0" conaffinity="0" group="1" />
+                            <body name="rightPinkyPitch3Link" pos="0 -0.0229 0">
+                              <inertial pos="0 -0.01 0" quat="0.744461 0.667321 -0.0066046 -0.0204209" mass="0.006" diaginertia="3.96371e-07 3.04726e-07 1.57904e-07" />
+                              <joint name="rightPinkyPitch3" range="0 1.92" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="pinkyj3_right" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+          <body name="leftShoulderPitchLink" pos="-0.0316 0 0.2984">
+            <inertial pos="-0.012 0.251 0" quat="0.5 0.5 -0.5 0.5" mass="2.65" diaginertia="0.0148064 0.0137182 0.0105028" />
+            <joint name="leftShoulderPitch" range="-2.85 2" actuatorfrcrange="-190 190" damping="0.1" axis="0 1 0" />
+            <geom type="mesh" mesh="aj1_left" contype="0" conaffinity="0" group="1" />
+            <body name="leftShoulderRollLink" pos="0 0.2499 0">
+              <inertial pos="-0.008513 0.02068 -0.001088" quat="0.487989 0.505578 -0.493273 0.512776" mass="3.97" diaginertia="0.0124553 0.00949615 0.00767802" />
+              <joint name="leftShoulderRoll" range="-1.519 1.266" actuatorfrcrange="-190 190" damping="0.1" axis="1 0 0" />
+              <geom type="mesh" mesh="aj2_left" contype="0" conaffinity="0" group="1" />
+              <body name="leftShoulderYawLink">
+                <inertial pos="-0.004304 0.209832 0.007295" quat="0.405027 0.252154 -0.635785 0.606753" mass="3.085" diaginertia="0.0429466 0.0401445 0.00304933" />
+                <joint name="leftShoulderYaw" range="-3.1 2.18" actuatorfrcrange="-65 65" damping="0.1" axis="0 1 0" />
+                <geom type="mesh" mesh="aj3_left" contype="0" conaffinity="0" group="1" />
+                <body name="leftElbowPitchLink" pos="0.0254 0.33 0">
+                  <inertial pos="-0.020344 0.014722 0.0223" quat="0.890096 -0.305382 -0.261043 0.21524" mass="1.83" diaginertia="0.00400574 0.00372534 0.00210039" />
+                  <joint name="leftElbowPitch" range="-2.174 0.12" actuatorfrcrange="-65 65" damping="0.1" />
+                  <geom type="mesh" mesh="aj4_left" contype="0" conaffinity="0" group="1" />
+                  <body name="leftForearmLink" pos="-0.0254 0 0">
+                    <inertial pos="0.015 0.13 0.019564" quat="0.767757 0.554288 0.260605 -0.188145" mass="2.476" diaginertia="0.0123133 0.0115163 0.00436298" />
+                    <joint name="leftForearmYaw" range="-2.019 3.14" actuatorfrcrange="-26 26" damping="0.1" axis="0 1 0" />
+                    <geom type="mesh" mesh="aj5_left" contype="0" conaffinity="0" group="1" />
+                    <body name="leftWristRollLink" pos="0 0.2871 0">
+                      <inertial pos="0 0 0" quat="0.712997 -0.000607879 -0.000612703 0.701167" mass="0.14" diaginertia="3.77221e-05 3.0249e-05 9.39494e-06" />
+                      <joint name="leftWristRoll" range="-0.62 0.625" actuatorfrcrange="-14 14" damping="0.1" axis="1 0 0" />
+                      <geom type="mesh" mesh="aj6_left" contype="0" conaffinity="0" group="1" />
+                      <body name="leftPalm">
+                        <inertial pos="0.002954 0.052034 -0.000236" quat="0.988544 -0.125738 -0.0595524 0.0585119" mass="0.712" diaginertia="0.000952107 0.000713649 0.00059896" />
+                        <joint name="leftWristPitch" range="-0.36 0.49" actuatorfrcrange="-14 14" damping="0.1" />
+                        <geom type="mesh" mesh="palm_left" contype="0" conaffinity="0" group="1" />
+                        <body name="leftThumbRollLink" pos="0.0049 0.0351 0.0228" quat="0.984805 -0.173665 0 0">
+                          <inertial pos="0 0 0.01" quat="0.708373 -0.0295077 -0.0177328 0.704998" mass="0.017" diaginertia="3.5469e-06 2.78425e-06 1.34832e-06" />
+                          <joint name="leftThumbRoll" range="0 2.356" actuatorfrcrange="-10 10" damping="1" axis="0 1 0" />
+                          <geom type="mesh" mesh="thumbj1_left" contype="0" conaffinity="0" group="1" />
+                          <body name="leftThumbPitch1Link" pos="0 0 0.0229" quat="0.984805 0.173665 0 0">
+                            <inertial pos="0 0.005 0.02" quat="0.707107 0 0 0.707107" mass="0.02" diaginertia="4.582e-06 4.239e-06 1.47e-06" />
+                            <joint name="leftThumbPitch1" range="-1.658 0" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                            <geom type="mesh" mesh="thumbj2_left" contype="0" conaffinity="0" group="1" />
+                            <body name="leftThumbPitch2Link" pos="0 0.0066 0.0375">
+                              <inertial pos="0 0.004 0.017" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.503e-06 1.266e-06 6.99e-07" />
+                              <joint name="leftThumbPitch2" range="-1.92 0" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                              <geom type="mesh" mesh="thumbj3_left" contype="0" conaffinity="0" group="1" />
+                              <body name="leftThumbPitch3Link" pos="0 0.0049 0.0275">
+                                <inertial pos="0 0.004 0.01" quat="0.707107 0 0 0.707107" mass="0.006" diaginertia="4.06e-07 3.22e-07 2.1e-07" />
+                                <joint name="leftThumbPitch3" range="-1.57 0" actuatorfrcrange="-10 10" damping="1" axis="1 0 0" />
+                                <geom type="mesh" mesh="thumbj4_left" contype="0" conaffinity="0" group="1" />
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                        <body name="leftIndexFingerPitch1Link" pos="0.0022 0.0976 0.0235" quat="0.996196 0.0871393 0 0">
+                          <inertial pos="0 0.02 0" quat="0.705999 0.70805 -0.00110974 0.0151468" mass="0.02" diaginertia="4.23337e-06 3.89184e-06 1.21379e-06" />
+                          <joint name="leftIndexFingerPitch1" range="-1.57 0" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="indexj1_left" contype="0" conaffinity="0" group="1" />
+                          <body name="leftIndexFingerPitch2Link" pos="0 0.0381 0">
+                            <inertial pos="0 0.013 0" quat="0.726734 0.686474 -0.00863291 0.023171" mass="0.018" diaginertia="1.56295e-06 1.25616e-06 7.19891e-07" />
+                            <joint name="leftIndexFingerPitch2" range="-1.658 0" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="indexj2_left" contype="0" conaffinity="0" group="1" />
+                            <body name="leftIndexFingerPitch3Link" pos="0 0.0229 0">
+                              <inertial pos="0 0.01 0" quat="0.72664 0.686317 0.017283 0.025764" mass="0.01" diaginertia="6.03471e-07 5.02964e-07 2.06565e-07" />
+                              <joint name="leftIndexFingerPitch3" range="-1.92 0" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="indexj3_left" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="leftMiddleFingerPitch1Link" pos="0.0022 0.097 -0.0119" quat="0.998134 -0.061062 0 0">
+                          <inertial pos="0 0.02 0" quat="0.706578 0.707545 -0.00307719 0.0108316" mass="0.02" diaginertia="5.14868e-06 4.59179e-06 1.32153e-06" />
+                          <joint name="leftMiddleFingerPitch1" range="-1.658 0" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="middlej1_left" contype="0" conaffinity="0" group="1" />
+                          <body name="leftMiddleFingerPitch2Link" pos="0 0.0381 0">
+                            <inertial pos="0 0.013 0" quat="0.504374 0.515849 -0.506399 0.4723" mass="0.011" diaginertia="2.27605e-06 1.97027e-06 5.49677e-07" />
+                            <joint name="leftMiddleFingerPitch2" range="-1.92 0" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="middlej2_left" contype="0" conaffinity="0" group="1" />
+                            <body name="leftMiddleFingerPitch3Link" pos="0 0.0229 0">
+                              <inertial pos="0 0.01 0" quat="0.744461 0.667321 0.0066046 0.0204209" mass="0.006" diaginertia="3.96371e-07 3.04726e-07 1.57904e-07" />
+                              <joint name="leftMiddleFingerPitch3" range="-1.57 0" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="middlej3_left" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="leftPinkyPitch1Link" pos="0.0022 0.0838 -0.041" quat="0.998134 -0.061062 0 0">
+                          <inertial pos="0 0.02 0" quat="0.706578 0.707545 -0.00307719 0.0108316" mass="0.02" diaginertia="5.14868e-06 4.59179e-06 1.32153e-06" />
+                          <joint name="leftPinkyPitch1" range="-1.57 0" actuatorfrcrange="-10 10" damping="1" />
+                          <geom type="mesh" mesh="pinkyj1_left" contype="0" conaffinity="0" group="1" />
+                          <body name="leftPinkyPitch2Link" pos="0 0.0381 0">
+                            <inertial pos="0 0.013 0" quat="0.504374 0.515849 -0.506399 0.4723" mass="0.011" diaginertia="2.27605e-06 1.97027e-06 5.49677e-07" />
+                            <joint name="leftPinkyPitch2" range="-1.658 0" actuatorfrcrange="-10 10" damping="1" />
+                            <geom type="mesh" mesh="pinkyj2_left" contype="0" conaffinity="0" group="1" />
+                            <body name="leftPinkyPitch3Link" pos="0 0.0229 0">
+                              <inertial pos="0 0.01 0" quat="0.744461 0.667321 0.0066046 0.0204209" mass="0.006" diaginertia="3.96371e-07 3.04726e-07 1.57904e-07" />
+                              <joint name="leftPinkyPitch3" range="-1.92 0" actuatorfrcrange="-10 10" damping="1" />
+                              <geom type="mesh" mesh="pinkyj3_left" contype="0" conaffinity="0" group="1" />
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="rightHipYawLink" pos="0 -0.1016 -0.1853">
+      <inertial pos="0.02176 0.00131 0.03867" mass="2.39" diaginertia="0.017261 0.0148662 0.0112382" />
+      <joint name="rightHipYaw" range="-1.1 0.4141" actuatorfrcrange="-190 190" damping="0.1" />
+      <geom type="mesh" mesh="lj1_right" contype="0" conaffinity="0" group="1" />
+      <body name="rightHipRollLink">
+        <inertial pos="0.012959 -0.00755 -0.01595" quat="0.538756 0.452427 0.652394 0.281841" mass="3.665" diaginertia="0.00976028 0.00798554 0.0057989" />
+        <joint name="rightHipRoll" range="-0.5515 0.467" actuatorfrcrange="-350 350" damping="0.1" axis="1 0 0" />
+        <geom type="mesh" mesh="lj2_right" contype="0" conaffinity="0" group="1" />
+        <body name="rightHipPitchLink" pos="0 0 -0.0609">
+          <inertial pos="0.016691 -0.091397 -0.207875" quat="0.706768 -0.00399553 -0.00802505 0.707388" mass="10.2" diaginertia="0.256905 0.240897 0.0232059" />
+          <joint name="rightHipPitch" range="-2.42 1.619" actuatorfrcrange="-350 350" damping="0.1" axis="0 1 0" />
+          <geom type="mesh" mesh="lj3_right" contype="0" conaffinity="0" group="1" />
+          <body name="rightKneePitchLink" pos="0.000112225 -0.0361046 -0.430959">
+            <inertial pos="-0.022183 0.001703 -0.189418" quat="0.714791 -0.00130456 -0.00421794 0.699324" mass="6.2" diaginertia="0.0915876 0.086938 0.0140115" />
+            <joint name="rightKneePitch" range="-0.083 2.057" actuatorfrcrange="-350 350" damping="0.1" axis="0 1 0" />
+            <geom type="mesh" mesh="lj4_right" contype="0" conaffinity="0" group="1" />
+            <body name="rightAnklePitchLink" pos="-0.0102381 0 -0.40627">
+              <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.03" diaginertia="7.015e-06 4.377e-06 4.322e-06" />
+              <joint name="rightAnklePitch" range="-0.8644 0.875" actuatorfrcrange="-205 205" damping="0.1" axis="0 1 0" />
+              <geom type="mesh" mesh="lj5" contype="0" conaffinity="0" group="1" />
+              <body name="rightFoot">
+                <inertial pos="0.0369087 0.00494324 -0.0489279" quat="-0.0131747 0.736914 -0.028612 0.675252" mass="2.37" diaginertia="0.0210598 0.0179875 0.00629809" />
+                <joint name="rightAnkleRoll" range="-0.349 0.348" actuatorfrcrange="-205 205" damping="0.3" axis="1 0 0" />
+                <geom size="0.135 0.08 0.032" pos="0.066 0 -0.056" type="box" contype="1" conaffinity="1" />
+              <site name="right_sole" type="box" pos="0.066 0 -0.088" size="0.12 0.07 0.003" /></body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="leftHipYawLink" pos="0 0.1016 -0.1853">
+      <inertial pos="0.02176 -0.00131 0.03867" mass="2.39" diaginertia="0.017261 0.0148662 0.0112382" />
+      <joint name="leftHipYaw" range="-0.4141 1.1" actuatorfrcrange="-190 190" damping="0.1" />
+      <geom type="mesh" mesh="lj1_left" contype="0" conaffinity="0" group="1" />
+      <body name="leftHipRollLink">
+        <inertial pos="0.012959 0.00755 -0.01595" quat="0.281841 0.652394 0.452427 0.538756" mass="3.665" diaginertia="0.00976028 0.00798554 0.0057989" />
+        <joint name="leftHipRoll" range="-0.467 0.5515" actuatorfrcrange="-350 350" damping="0.1" axis="1 0 0" />
+        <geom type="mesh" mesh="lj2_left" contype="0" conaffinity="0" group="1" />
+        <body name="leftHipPitchLink" pos="0 0 -0.0609">
+          <inertial pos="0.016691 0.091397 -0.207875" quat="0.707388 -0.00802505 -0.00399553 0.706768" mass="10.2" diaginertia="0.256905 0.240897 0.0232059" />
+          <joint name="leftHipPitch" range="-2.42 1.619" actuatorfrcrange="-350 350" damping="0.1" axis="0 1 0" />
+          <geom type="mesh" mesh="lj3_left" contype="0" conaffinity="0" group="1" />
+          <body name="leftKneePitchLink" pos="0.000112225 0.0361046 -0.430959">
+            <inertial pos="-0.022183 0.001703 -0.189418" quat="0.714791 -0.00130456 -0.00421794 0.699324" mass="6.2" diaginertia="0.0915876 0.086938 0.0140115" />
+            <joint name="leftKneePitch" range="-0.083 2.057" actuatorfrcrange="-350 350" damping="0.1" axis="0 1 0" />
+            <geom type="mesh" mesh="lj4_left" contype="0" conaffinity="0" group="1" />
+            <body name="leftAnklePitchLink" pos="-0.0102381 0 -0.40627">
+              <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.03" diaginertia="7.015e-06 4.377e-06 4.322e-06" />
+              <joint name="leftAnklePitch" range="-0.8644 0.875" actuatorfrcrange="-205 205" damping="0.1" axis="0 1 0" />
+              <geom type="mesh" mesh="lj5" contype="0" conaffinity="0" group="1" />
+              <body name="leftFoot">
+                <inertial pos="0.0369087 0.00494324 -0.0489279" quat="-0.0131747 0.736914 -0.028612 0.675252" mass="2.37" diaginertia="0.0210598 0.0179875 0.00629809" />
+                <joint name="leftAnkleRoll" range="-0.349 0.348" actuatorfrcrange="-205 205" damping="0.3" axis="1 0 0" />
+                <geom size="0.135 0.08 0.032" pos="0.066 0 -0.056" type="box" contype="1" conaffinity="1" />
+              <site name="left_sole" type="box" pos="0.066 0 -0.088" size="0.12 0.07 0.003" /></body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  <site name="pelvis_imu" size="0.01" /></body></worldbody>
+<actuator><motor name="torsoYaw" joint="torsoYaw" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="torsoPitch" joint="torsoPitch" gear="1" ctrllimited="true" ctrlrange="-150 150" /><motor name="torsoRoll" joint="torsoRoll" gear="1" ctrllimited="true" ctrlrange="-150 150" /><motor name="lowerNeckPitch" joint="lowerNeckPitch" gear="1" ctrllimited="true" ctrlrange="-26 26" /><motor name="neckYaw" joint="neckYaw" gear="1" ctrllimited="true" ctrlrange="-26 26" /><motor name="upperNeckPitch" joint="upperNeckPitch" gear="1" ctrllimited="true" ctrlrange="-26 26" /><motor name="rightShoulderPitch" joint="rightShoulderPitch" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="rightShoulderRoll" joint="rightShoulderRoll" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="rightShoulderYaw" joint="rightShoulderYaw" gear="1" ctrllimited="true" ctrlrange="-65 65" /><motor name="rightElbowPitch" joint="rightElbowPitch" gear="1" ctrllimited="true" ctrlrange="-65 65" /><motor name="rightForearmYaw" joint="rightForearmYaw" gear="1" ctrllimited="true" ctrlrange="-26 26" /><motor name="rightWristRoll" joint="rightWristRoll" gear="1" ctrllimited="true" ctrlrange="-14 14" /><motor name="rightWristPitch" joint="rightWristPitch" gear="1" ctrllimited="true" ctrlrange="-14 14" /><motor name="rightThumbRoll" joint="rightThumbRoll" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightThumbPitch1" joint="rightThumbPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightThumbPitch2" joint="rightThumbPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightThumbPitch3" joint="rightThumbPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightIndexFingerPitch1" joint="rightIndexFingerPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightIndexFingerPitch2" joint="rightIndexFingerPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightIndexFingerPitch3" joint="rightIndexFingerPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightMiddleFingerPitch1" joint="rightMiddleFingerPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightMiddleFingerPitch2" joint="rightMiddleFingerPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightMiddleFingerPitch3" joint="rightMiddleFingerPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightPinkyPitch1" joint="rightPinkyPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightPinkyPitch2" joint="rightPinkyPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightPinkyPitch3" joint="rightPinkyPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftShoulderPitch" joint="leftShoulderPitch" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="leftShoulderRoll" joint="leftShoulderRoll" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="leftShoulderYaw" joint="leftShoulderYaw" gear="1" ctrllimited="true" ctrlrange="-65 65" /><motor name="leftElbowPitch" joint="leftElbowPitch" gear="1" ctrllimited="true" ctrlrange="-65 65" /><motor name="leftForearmYaw" joint="leftForearmYaw" gear="1" ctrllimited="true" ctrlrange="-26 26" /><motor name="leftWristRoll" joint="leftWristRoll" gear="1" ctrllimited="true" ctrlrange="-14 14" /><motor name="leftWristPitch" joint="leftWristPitch" gear="1" ctrllimited="true" ctrlrange="-14 14" /><motor name="leftThumbRoll" joint="leftThumbRoll" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftThumbPitch1" joint="leftThumbPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftThumbPitch2" joint="leftThumbPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftThumbPitch3" joint="leftThumbPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftIndexFingerPitch1" joint="leftIndexFingerPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftIndexFingerPitch2" joint="leftIndexFingerPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftIndexFingerPitch3" joint="leftIndexFingerPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftMiddleFingerPitch1" joint="leftMiddleFingerPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftMiddleFingerPitch2" joint="leftMiddleFingerPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftMiddleFingerPitch3" joint="leftMiddleFingerPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftPinkyPitch1" joint="leftPinkyPitch1" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftPinkyPitch2" joint="leftPinkyPitch2" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="leftPinkyPitch3" joint="leftPinkyPitch3" gear="1" ctrllimited="true" ctrlrange="-10 10" /><motor name="rightHipYaw" joint="rightHipYaw" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="rightHipRoll" joint="rightHipRoll" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="rightHipPitch" joint="rightHipPitch" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="rightKneePitch" joint="rightKneePitch" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="rightAnklePitch" joint="rightAnklePitch" gear="1" ctrllimited="true" ctrlrange="-205 205" /><motor name="rightAnkleRoll" joint="rightAnkleRoll" gear="1" ctrllimited="true" ctrlrange="-205 205" /><motor name="leftHipYaw" joint="leftHipYaw" gear="1" ctrllimited="true" ctrlrange="-190 190" /><motor name="leftHipRoll" joint="leftHipRoll" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="leftHipPitch" joint="leftHipPitch" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="leftKneePitch" joint="leftKneePitch" gear="1" ctrllimited="true" ctrlrange="-350 350" /><motor name="leftAnklePitch" joint="leftAnklePitch" gear="1" ctrllimited="true" ctrlrange="-205 205" /><motor name="leftAnkleRoll" joint="leftAnkleRoll" gear="1" ctrllimited="true" ctrlrange="-205 205" /></actuator><sensor><framequat name="pelvis_orientation" objtype="site" objname="pelvis_imu" /><gyro name="pelvis_angular_velocity" site="pelvis_imu" /><accelerometer name="pelvis_linear_acceleration" site="pelvis_imu" /><touch name="left_foot_contact" site="left_sole" /><touch name="right_foot_contact" site="right_sole" /></sensor></mujoco>

@@ -27,7 +27,7 @@ static bool gDragging = false, gPanning = false, gSimulationRunning = false;
 static bool gFramebufferResized = false;
 static int gWindowWidth = 1280, gWindowHeight = 800, gWindowX = 80, gWindowY = 80;
 static int gTintMode = 0;
-static bool gBuildRequested = false, gBuildBipedRequested = false, gBuildUnitreeH1Requested = false, gDemoRequested = false, gSafeWalkRequested = false, gNewSceneRequested = false, gUiReady = false;
+static bool gBuildRequested = false, gBuildBipedRequested = false, gBuildUnitreeH1Requested = false, gBuildValkyrieRequested = false, gRobotPickerRequested = false, gDemoRequested = false, gSafeWalkRequested = false, gNewSceneRequested = false, gUiReady = false;
 static int gCreatePrimitive = -1;
 static uint32_t gSelectedId = 1;
 static int gRobotScript = 5; // Unitree's official pretrained H1 policy.
@@ -121,6 +121,28 @@ static const char *unitreeH1MeshName(const std::string &body) {
       {"left_shoulder_yaw_link", "left_shoulder_yaw_link.STL"}, {"left_elbow_link_ball_hand", "left_elbow_link_ball_hand.STL"},
       {"right_shoulder_pitch_link", "right_shoulder_pitch_link.STL"}, {"right_shoulder_roll_link", "right_shoulder_roll_link.STL"},
       {"right_shoulder_yaw_link", "right_shoulder_yaw_link.STL"}, {"right_elbow_link_ball_hand", "right_elbow_link_ball_hand.STL"}
+  }};
+  for (const auto &[link, mesh] : names) if (body == link) return mesh;
+  return nullptr;
+}
+
+static const char *valkyrieMeshName(const std::string &body) {
+  static const std::array<std::pair<const char *, const char *>, 33> names{{
+      {"pelvis", "pelvis/pelvis.stl"}, {"torsoYawLink", "torso/torsoyaw.stl"},
+      {"torsoPitchLink", "torso/torsopitch.stl"}, {"torso", "torso/torso.stl"},
+      {"lowerNeckPitchLink", "head/neckj1.stl"}, {"neckYawLink", "head/neckj2.stl"},
+      {"upperNeckPitchLink", "head/head_multisense_no_visor.stl"},
+      {"rightHipYawLink", "legs/lj1_right.stl"}, {"rightHipRollLink", "legs/lj2_right.stl"},
+      {"rightHipPitchLink", "legs/lj3_right.stl"}, {"rightKneePitchLink", "legs/lj4_right.stl"}, {"rightAnklePitchLink", "legs/lj5.stl"},
+      {"leftHipYawLink", "legs/lj1_left.stl"}, {"leftHipRollLink", "legs/lj2_left.stl"},
+      {"leftHipPitchLink", "legs/lj3_left.stl"}, {"leftKneePitchLink", "legs/lj4_left.stl"}, {"leftAnklePitchLink", "legs/lj5.stl"},
+      {"rightFoot", "legs/foot.stl"}, {"leftFoot", "legs/foot.stl"},
+      {"rightShoulderPitchLink", "arms/aj1_right.stl"}, {"rightShoulderRollLink", "arms/aj2_right.stl"},
+      {"rightShoulderYawLink", "arms/aj3_right.stl"}, {"rightElbowPitchLink", "arms/aj4_right.stl"},
+      {"rightForearmLink", "arms/aj5_right.stl"}, {"rightWristRollLink", "arms/aj6_right.stl"}, {"rightPalm", "arms/palm_right.stl"},
+      {"leftShoulderPitchLink", "arms/aj1_left.stl"}, {"leftShoulderRollLink", "arms/aj2_left.stl"},
+      {"leftShoulderYawLink", "arms/aj3_left.stl"}, {"leftElbowPitchLink", "arms/aj4_left.stl"},
+      {"leftForearmLink", "arms/aj5_left.stl"}, {"leftWristRollLink", "arms/aj6_left.stl"}, {"leftPalm", "arms/palm_left.stl"}
   }};
   for (const auto &[link, mesh] : names) if (body == link) return mesh;
   return nullptr;
@@ -478,6 +500,18 @@ int main() {
       objectDraws.push_back({firstIndex, indexCount, object.id, true});
       return true;
     };
+    auto addValkyrieMesh = [&](const SceneObject &object) {
+      const char *meshName = valkyrieMeshName(object.name);
+      if (!meshName) return false;
+      const auto path = std::filesystem::path(CAO_SOURCE_DIR) / "assets" / "valkyrie" / "meshes" / meshName;
+      const std::array<float, 3> color = object.name == "pelvis" || object.name == "torso"
+          ? std::array<float, 3>{{0.82f, 0.57f, 0.20f}}
+          : std::array<float, 3>{{0.30f, 0.34f, 0.40f}};
+      uint32_t firstIndex = 0, indexCount = 0;
+      if (!appendBinaryStl(path, color, vertices, indices, firstIndex, indexCount)) return false;
+      objectDraws.push_back({firstIndex, indexCount, object.id, true});
+      return true;
+    };
     auto addGridStrip = [&](float x0, float z0, float x1, float z1,
                             float width, const std::array<float, 3> &color) {
       const uint32_t first = static_cast<uint32_t>(vertices.size());
@@ -528,6 +562,8 @@ int main() {
         {{0.10f, 0.72f, 0.95f}}, {{0.18f, 0.88f, 0.62f}}, {{1.00f, 0.72f, 0.16f}}
     }};
     for (const SceneObject &object : scene.objects()) {
+      if (scene.isUnitreeH1() && addUnitreeH1Mesh(object)) continue;
+      if (scene.isValkyrie() && addValkyrieMesh(object)) continue;
       const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
       if (object.primitive == Primitive::Cylinder) addCylinder({{0.12f, 0.95f, 0.35f}}, object.id);
       else addBlock(layerColors[layer], object.id);
@@ -541,8 +577,8 @@ int main() {
       void *mapped=nullptr; check(vkMapMemory(device,outMemory,0,sourceSize,0,&mapped),"map buffer"); std::memcpy(mapped,source,sourceSize); vkUnmapMemory(device,outMemory);
     };
     constexpr size_t maxSceneObjects = 128;
-    // The complete upstream H1 mesh set is about 615k triangles. Leave room
-    // for the real imported geometry without reallocating Vulkan buffers.
+    // The imported humanoid mesh sets fit below this ceiling without runtime
+    // reallocation; Valkyrie is much smaller than the complete H1 set.
     constexpr size_t h1MeshVertexCapacity = 2'100'000u;
     constexpr size_t h1MeshIndexCapacity = 2'100'000u;
     const VkDeviceSize vertexCapacity = std::max(vertices.size() + maxSceneObjects * 8u, h1MeshVertexCapacity) * sizeof(Vertex);
@@ -561,12 +597,13 @@ int main() {
       objectDraws.clear();
       for (const SceneObject &object : scene.objects()) {
         if (scene.isUnitreeH1() && addUnitreeH1Mesh(object)) continue;
+        if (scene.isValkyrie() && addValkyrieMesh(object)) continue;
         const int layer = std::clamp(static_cast<int>(object.transform.position.y) - 1, 0, 2);
         if (object.primitive == Primitive::Cylinder) addCylinder({{0.12f, 0.95f, 0.35f}}, object.id);
         else addBlock(layerColors[layer], object.id);
       }
       if (vertices.size() > h1MeshVertexCapacity || indices.size() > h1MeshIndexCapacity)
-        throw std::runtime_error("Unitree H1 mesh set exceeds the reserved Vulkan scene buffer");
+        throw std::runtime_error("Humanoid mesh set exceeds the reserved Vulkan scene buffer");
       uploadSceneGeometry();
     };
 
@@ -709,6 +746,7 @@ int main() {
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Simulation")) {
+          if (ImGui::MenuItem("Robot library...")) gRobotPickerRequested = true;
           if (ImGui::MenuItem(gSimulationRunning ? "Pause" : "Play", "Space")) gSimulationRunning = !gSimulationRunning;
           if (ImGui::MenuItem("Reset H1", "B")) gBuildUnitreeH1Requested = true;
           if (ImGui::MenuItem("Drop H1", "D")) gDemoRequested = true;
@@ -770,8 +808,30 @@ int main() {
       }
       ImGui::SetNextWindowPos(ImVec2(12, 34), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowBgAlpha(0.92f);
+      if (gRobotPickerRequested) {
+        ImGui::OpenPopup("Robot library");
+        gRobotPickerRequested = false;
+      }
+      if (ImGui::BeginPopupModal("Robot library", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Choose a robot for the viewport");
+        ImGui::Separator();
+        if (ImGui::Selectable("Unitree H1 | pretrained walk | live simulation")) {
+          gBuildUnitreeH1Requested = true;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextDisabled("Validated recurrent locomotion policy");
+        if (ImGui::Selectable("NASA Valkyrie | assisted simulation | IK ready")) {
+          gBuildValkyrieRequested = true;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextDisabled("58 torque motors; free-standing policy is not yet validated");
+        ImGui::Separator();
+        if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+      }
       if (gShowToolbar) {
       ImGui::Begin("CAO Toolbar", &gShowToolbar, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+      if (ImGui::Button("Robot library...")) gRobotPickerRequested = true; ImGui::SameLine();
       if (ImGui::Button("Reset H1")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
       if (ImGui::Button("Import H1 Unitree walk")) gBuildUnitreeH1Requested = true; ImGui::SameLine();
       ImGui::TextUnformatted("Unitree pretrained locomotion"); ImGui::SameLine();
@@ -779,7 +839,8 @@ int main() {
       if (ImGui::Button("Jump test")) gJumpTestRequested = true; ImGui::SameLine();
       if (ImGui::Button("Macro AI: go to circle")) gNavigateGoalRequested = true; ImGui::SameLine();
       if (ImGui::Button(physics.fullBodyMode() ? "Use walking H1" : "Enable full-body H1")) gToggleFullBodyRequested = true; ImGui::SameLine();
-      if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
+      if (scene.isValkyrie()) { ImGui::TextDisabled("Valkyrie assisted simulation"); ImGui::SameLine(); if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning; }
+      else if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::Separator();
       ImGui::TextDisabled("Window controls");
       ImGui::SetNextItemWidth(72); ImGui::InputInt("Width", &gWindowWidth); ImGui::SameLine();
@@ -792,6 +853,7 @@ int main() {
       if (ImGui::Button("Default 1280 x 800")) { glfwRestoreWindow(window); glfwSetWindowSize(window, 1280, 800); glfwSetWindowPos(window, 80, 80); }
       ImGui::TextDisabled(scene.isUnitreeH1()
           ? "Unitree H1: torque PD | balance-gated assisted stepping"
+          : scene.isValkyrie() ? "NASA Valkyrie: visual preview | free-standing policy gated"
           : scene.isBiped() ? "Biped: 8 rotary actuators | balance-verified standing pose"
                             : "Hexapod: 24 rotary actuators | one-foot crawl gait");
       if (!gSceneStatus.empty()) {
@@ -802,10 +864,13 @@ int main() {
       }
       const char *robotScripts[] = {"Stand", "Crawl walk", "Tripod walk", "Fast crawl"};
       const char *h1Scripts[] = {"H1 Unitree pretrained walk"};
-      const char *const *activeScripts = scene.isUnitreeH1() ? h1Scripts : robotScripts;
-      const int activeScriptCount = scene.isUnitreeH1() ? IM_ARRAYSIZE(h1Scripts) : IM_ARRAYSIZE(robotScripts);
-      int visibleScript = scene.isUnitreeH1() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
-      if (ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount)) {
+      const char *valkyrieScripts[] = {"Visual preview (live policy gated)"};
+      const char *const *activeScripts = scene.isUnitreeH1() ? h1Scripts : scene.isValkyrie() ? valkyrieScripts : robotScripts;
+      const int activeScriptCount = scene.isUnitreeH1() ? IM_ARRAYSIZE(h1Scripts) : scene.isValkyrie() ? IM_ARRAYSIZE(valkyrieScripts) : IM_ARRAYSIZE(robotScripts);
+      int visibleScript = scene.isUnitreeH1() || scene.isValkyrie() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
+      if (scene.isValkyrie()) {
+        ImGui::BeginDisabled(); ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount); ImGui::EndDisabled();
+      } else if (ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount)) {
         gRobotScript = scene.isUnitreeH1() ? 5 : visibleScript;
         physics.setRobotScript(gRobotScript);
         gSimulationRunning = gRobotScript != 0;
@@ -997,6 +1062,13 @@ int main() {
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
         rebuildSceneGeometry(); gSimulationRunning = true; gBuildUnitreeH1Requested = false;
         gSceneStatus = "Unitree H1 pretrained policy: 0.5 m/s command, fixed upper body, physical foot contacts.";
+        gSceneStatusError = false;
+      }
+      if (gBuildValkyrieRequested) {
+        scene.buildValkyrie(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
+        rebuildSceneGeometry(); gSimulationRunning = true; gBuildValkyrieRequested = false;
+        gSceneStatus = "NASA Valkyrie assisted simulation: 58 torque motors, physical feet, bounded balance assist; free balance not validated.";
         gSceneStatusError = false;
       }
       if (gDemoRequested) {

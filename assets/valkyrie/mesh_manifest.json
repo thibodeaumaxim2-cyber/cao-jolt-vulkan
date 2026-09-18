@@ -1,0 +1,317 @@
+{
+  "format": "cao_valkyrie_mesh_manifest_v1",
+  "license": "NASA-1.3",
+  "source_repository": "openhumanoids/val_description",
+  "meshes": [
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj1_left.dae",
+      "output": "arms/aj1_left.stl",
+      "triangles": 178
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj1_right.dae",
+      "output": "arms/aj1_right.stl",
+      "triangles": 178
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj2_left.dae",
+      "output": "arms/aj2_left.stl",
+      "triangles": 138
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj2_right.dae",
+      "output": "arms/aj2_right.stl",
+      "triangles": 138
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj3_left.dae",
+      "output": "arms/aj3_left.stl",
+      "triangles": 334
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj3_right.dae",
+      "output": "arms/aj3_right.stl",
+      "triangles": 334
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj4_left.dae",
+      "output": "arms/aj4_left.stl",
+      "triangles": 244
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj4_right.dae",
+      "output": "arms/aj4_right.stl",
+      "triangles": 244
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj5_left.dae",
+      "output": "arms/aj5_left.stl",
+      "triangles": 332
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj5_right.dae",
+      "output": "arms/aj5_right.stl",
+      "triangles": 332
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj6_left.dae",
+      "output": "arms/aj6_left.stl",
+      "triangles": 12
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/aj6_right.dae",
+      "output": "arms/aj6_right.stl",
+      "triangles": 12
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/palm_left.dae",
+      "output": "arms/palm_left.stl",
+      "triangles": 118
+    },
+    {
+      "source": "third_party/val_description/model/meshes/arms/palm_right.dae",
+      "output": "arms/palm_right.stl",
+      "triangles": 118
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj1_left.dae",
+      "output": "fingers/indexj1_left.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj1_right.dae",
+      "output": "fingers/indexj1_right.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj2_left.dae",
+      "output": "fingers/indexj2_left.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj2_right.dae",
+      "output": "fingers/indexj2_right.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj3_left.dae",
+      "output": "fingers/indexj3_left.stl",
+      "triangles": 40
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/indexj3_right.dae",
+      "output": "fingers/indexj3_right.stl",
+      "triangles": 40
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej1_left.dae",
+      "output": "fingers/middlej1_left.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej1_right.dae",
+      "output": "fingers/middlej1_right.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej2_left.dae",
+      "output": "fingers/middlej2_left.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej2_right.dae",
+      "output": "fingers/middlej2_right.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej3_left.dae",
+      "output": "fingers/middlej3_left.stl",
+      "triangles": 60
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/middlej3_right.dae",
+      "output": "fingers/middlej3_right.stl",
+      "triangles": 60
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj1_left.dae",
+      "output": "fingers/pinkyj1_left.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj1_right.dae",
+      "output": "fingers/pinkyj1_right.stl",
+      "triangles": 112
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj2_left.dae",
+      "output": "fingers/pinkyj2_left.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj2_right.dae",
+      "output": "fingers/pinkyj2_right.stl",
+      "triangles": 180
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj3_left.dae",
+      "output": "fingers/pinkyj3_left.stl",
+      "triangles": 60
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/pinkyj3_right.dae",
+      "output": "fingers/pinkyj3_right.stl",
+      "triangles": 60
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj1_left.dae",
+      "output": "fingers/thumbj1_left.stl",
+      "triangles": 62
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj1_right.dae",
+      "output": "fingers/thumbj1_right.stl",
+      "triangles": 62
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj2_left.dae",
+      "output": "fingers/thumbj2_left.stl",
+      "triangles": 100
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj2_right.dae",
+      "output": "fingers/thumbj2_right.stl",
+      "triangles": 100
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj3_left.dae",
+      "output": "fingers/thumbj3_left.stl",
+      "triangles": 86
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj3_right.dae",
+      "output": "fingers/thumbj3_right.stl",
+      "triangles": 86
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj4_left.dae",
+      "output": "fingers/thumbj4_left.stl",
+      "triangles": 82
+    },
+    {
+      "source": "third_party/val_description/model/meshes/fingers/thumbj4_right.dae",
+      "output": "fingers/thumbj4_right.stl",
+      "triangles": 82
+    },
+    {
+      "source": "third_party/val_description/model/meshes/head/head_multisense.dae",
+      "output": "head/head_multisense.stl",
+      "triangles": 686
+    },
+    {
+      "source": "third_party/val_description/model/meshes/head/head_multisense_no_visor.dae",
+      "output": "head/head_multisense_no_visor.stl",
+      "triangles": 668
+    },
+    {
+      "source": "third_party/val_description/model/meshes/head/multisense_hokuyo.dae",
+      "output": "head/multisense_hokuyo.stl",
+      "triangles": 132
+    },
+    {
+      "source": "third_party/val_description/model/meshes/head/neckj1.dae",
+      "output": "head/neckj1.stl",
+      "triangles": 188
+    },
+    {
+      "source": "third_party/val_description/model/meshes/head/neckj2.dae",
+      "output": "head/neckj2.stl",
+      "triangles": 148
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/foot.dae",
+      "output": "legs/foot.stl",
+      "triangles": 10281
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj1_left.dae",
+      "output": "legs/lj1_left.stl",
+      "triangles": 92
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj1_right.dae",
+      "output": "legs/lj1_right.stl",
+      "triangles": 92
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj2_left.dae",
+      "output": "legs/lj2_left.stl",
+      "triangles": 246
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj2_right.dae",
+      "output": "legs/lj2_right.stl",
+      "triangles": 246
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj3_left.dae",
+      "output": "legs/lj3_left.stl",
+      "triangles": 22564
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj3_right.dae",
+      "output": "legs/lj3_right.stl",
+      "triangles": 22952
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj4_left.dae",
+      "output": "legs/lj4_left.stl",
+      "triangles": 27846
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj4_right.dae",
+      "output": "legs/lj4_right.stl",
+      "triangles": 22976
+    },
+    {
+      "source": "third_party/val_description/model/meshes/legs/lj5.dae",
+      "output": "legs/lj5.stl",
+      "triangles": 358
+    },
+    {
+      "source": "third_party/val_description/model/meshes/multisense/head.dae",
+      "output": "multisense/head.stl",
+      "triangles": 0
+    },
+    {
+      "source": "third_party/val_description/model/meshes/multisense/head_camera.dae",
+      "output": "multisense/head_camera.stl",
+      "triangles": 0
+    },
+    {
+      "source": "third_party/val_description/model/meshes/multisense/head_multisense.dae",
+      "output": "multisense/head_multisense.stl",
+      "triangles": 686
+    },
+    {
+      "source": "third_party/val_description/model/meshes/pelvis/pelvis.dae",
+      "output": "pelvis/pelvis.stl",
+      "triangles": 276
+    },
+    {
+      "source": "third_party/val_description/model/meshes/torso/torso.dae",
+      "output": "torso/torso.stl",
+      "triangles": 658
+    },
+    {
+      "source": "third_party/val_description/model/meshes/torso/torsopitch.dae",
+      "output": "torso/torsopitch.stl",
+      "triangles": 144
+    },
+    {
+      "source": "third_party/val_description/model/meshes/torso/torsoyaw.dae",
+      "output": "torso/torsoyaw.stl",
+      "triangles": 160
+    }
+  ]
+}

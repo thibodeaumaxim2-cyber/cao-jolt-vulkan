@@ -31,5 +31,10 @@ int main() {
   assert(scene.add(Primitive::Box).id == 43);
   scene.buildQuadruped();
   assert(scene.objects().size() == 25); // torso + six legs with four links each
+  scene.buildValkyrie();
+  assert(scene.isValkyrie());
+  assert(!scene.isUnitreeH1());
+  assert(scene.objects().size() == 33); // converted mesh-bearing body links
+  assert(scene.objects().front().name == "pelvis");
   return 0;
 }

@@ -18,11 +18,13 @@ class Scene {
   void buildQuadruped();
   void buildBiped();
   void buildUnitreeH1();
+  void buildValkyrie();
   bool isQuadruped() const{return quadruped_;}
   bool isBiped() const{return biped_;}
   bool isUnitreeH1() const{return unitreeH1_;}
+  bool isValkyrie() const{return valkyrie_;}
   void clear();
   const std::vector<SceneObject>& objects()const{return objects_;}
   std::vector<SceneObject>& objects(){return objects_;}
- private: uint32_t nextId_=1; bool quadruped_=false; bool biped_=false; bool unitreeH1_=false; std::vector<SceneObject> objects_;
+ private: uint32_t nextId_=1; bool quadruped_=false; bool biped_=false; bool unitreeH1_=false; bool valkyrie_=false; std::vector<SceneObject> objects_;
 };

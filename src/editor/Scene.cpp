@@ -6,7 +6,7 @@ SceneObject& Scene::add(Primitive p,const Transform&t){std::string name=[&]{swit
 SceneObject& Scene::addWithId(uint32_t id, Primitive p, const Transform &t){if(id==0||find(id)!=nullptr)throw std::invalid_argument("Scene object ID is invalid or already used");std::string name=[&]{switch(p){case Primitive::Box:return "Box";case Primitive::Cylinder:return "Cylinder";case Primitive::Sphere:return "Sphere";default:return "Beam";}}();objects_.push_back({id,p,name+" "+std::to_string(id),t});nextId_=std::max(nextId_,id+1);return objects_.back();}
 void Scene::erase(uint32_t id){objects_.erase(std::remove_if(objects_.begin(),objects_.end(),[&](auto&o){return o.id==id;}),objects_.end());}
 SceneObject* Scene::find(uint32_t id){for(auto&o:objects_)if(o.id==id)return&o;return nullptr;}
-void Scene::clear(){objects_.clear();nextId_=1;quadruped_=false;biped_=false;unitreeH1_=false;}
+void Scene::clear(){objects_.clear();nextId_=1;quadruped_=false;biped_=false;unitreeH1_=false;valkyrie_=false;}
 void Scene::buildPyramid(int levels,bool dynamic){clear();levels=std::clamp(levels,2,12);for(int y=0;y<levels;y++)for(int x=0;x<levels-y;x++)for(int z=0;z<levels-y;z++){Transform t;t.position={x-(levels-y-1)*.5f,.5f+y,z-(levels-y-1)*.5f};auto&o=add(Primitive::Box,t);o.dynamic=dynamic;}}
 
 void Scene::buildQuadruped(){
@@ -82,4 +82,31 @@ void Scene::buildUnitreeH1(){
   }
   Transform target; target.position={6.2f,.012f,0}; target.scale={.72f,.024f,.72f};
   auto &goal=add(Primitive::Cylinder,target); goal.name="goal_circle"; goal.dynamic=false;
+  // A five-level, 15-block fragile pyramid waits beyond the goal. MuJoCo
+  // holds it with gravity compensation until the goal trigger releases it.
+  for (int row=0; row<5; ++row) for (int column=0; column<5-row; ++column) {
+    Transform t; t.position={7.20f, .25f+.50f*row,
+        (column-(4-row)*.5f)*.50f}; t.scale={.50f,.50f,.50f};
+    auto &o=add(Primitive::Box,t);
+    o.name="fragile_pyramid_"+std::to_string(row)+"_"+std::to_string(column); o.dynamic=true;
+  }
+}
+
+void Scene::buildValkyrie(){
+  clear(); valkyrie_=true;
+  auto part=[&](const char *name) {
+    Transform t; t.position={0,1.18f,0}; t.scale={1,1,1};
+    auto &object=add(Primitive::Box,t); object.name=name; object.dynamic=false;
+  };
+  // These body names are synchronized from the isolated Valkyrie MJCF.
+  // The Vulkan renderer replaces their box proxies with converted STL meshes.
+  constexpr std::array<const char *, 33> bodies{{
+      "pelvis", "torsoYawLink", "torsoPitchLink", "torso",
+      "lowerNeckPitchLink", "neckYawLink", "upperNeckPitchLink",
+      "rightHipYawLink", "rightHipRollLink", "rightHipPitchLink", "rightKneePitchLink", "rightAnklePitchLink",
+      "leftHipYawLink", "leftHipRollLink", "leftHipPitchLink", "leftKneePitchLink", "leftAnklePitchLink", "rightFoot", "leftFoot",
+      "rightShoulderPitchLink", "rightShoulderRollLink", "rightShoulderYawLink", "rightElbowPitchLink", "rightForearmLink", "rightWristRollLink", "rightPalm",
+      "leftShoulderPitchLink", "leftShoulderRollLink", "leftShoulderYawLink", "leftElbowPitchLink", "leftForearmLink", "leftWristRollLink", "leftPalm"
+  }};
+  for (const char *body : bodies) part(body);
 }

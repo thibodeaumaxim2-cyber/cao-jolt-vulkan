@@ -29,5 +29,20 @@
     <body name="nav_obstacle_8" pos="4.85 0 .38"><geom type="box" size=".20 .20 .38" rgba=".55 .12 .12 1" friction=".9 .02 .001"/></body>
     <body name="nav_obstacle_9" pos="5.70 .45 .38"><geom type="box" size=".20 .20 .38" rgba=".55 .12 .12 1" friction=".9 .02 .001"/></body>
     <body name="goal_circle" pos="6.2 0 .012"><geom type="cylinder" size=".36 .012" contype="0" conaffinity="0" rgba=".12 .95 .35 .85"/></body>
+    <body name="fragile_pyramid_0_0" pos="7.2 -1 .25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_0_1" pos="7.2 -.5 .25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_0_2" pos="7.2 0 .25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_0_3" pos="7.2 .5 .25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_0_4" pos="7.2 1 .25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_1_0" pos="7.2 -.75 .75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_1_1" pos="7.2 -.25 .75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_1_2" pos="7.2 .25 .75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_1_3" pos="7.2 .75 .75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_2_0" pos="7.2 -.5 1.25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_2_1" pos="7.2 0 1.25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_2_2" pos="7.2 .5 1.25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_3_0" pos="7.2 -.25 1.75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_3_1" pos="7.2 .25 1.75" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
+    <body name="fragile_pyramid_4_0" pos="7.2 0 2.25" gravcomp="1"><freejoint/><geom type="box" size=".25 .25 .25" mass=".6" friction=".35 .02 .001"/></body>
   </worldbody>
 </mujoco>
