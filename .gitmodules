@@ -1,3 +1,6 @@
 [submodule "third_party/unitree_mujoco"]
 	path = third_party/unitree_mujoco
 	url = https://github.com/unitreerobotics/unitree_mujoco.git
+[submodule "third_party/val_description"]
+	path = third_party/val_description
+	url = https://github.com/openhumanoids/val_description.git
