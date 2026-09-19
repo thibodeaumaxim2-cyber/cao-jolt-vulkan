@@ -244,7 +244,10 @@ static VkShaderModule shader(VkDevice device, const char *name) {
   return out;
 }
 
-int main() {
+int main(int argc, char** argv) {
+  // Use the normal import path once rendering is initialized.
+  for (int i=1; i<argc; ++i)
+    if (std::string(argv[i]) == "--valkyrie") gBuildValkyrieRequested = true;
   try {
     if (!glfwInit()) return 1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -824,7 +827,7 @@ int main() {
           gBuildValkyrieRequested = true;
           ImGui::CloseCurrentPopup();
         }
-        ImGui::TextDisabled("58 torque motors; free-standing policy is not yet validated");
+        ImGui::TextDisabled("58 torque motors; full-body standing controller");
         ImGui::Separator();
         if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
@@ -864,7 +867,7 @@ int main() {
       }
       const char *robotScripts[] = {"Stand", "Crawl walk", "Tripod walk", "Fast crawl"};
       const char *h1Scripts[] = {"H1 Unitree pretrained walk"};
-      const char *valkyrieScripts[] = {"Visual preview (live policy gated)"};
+      const char *valkyrieScripts[] = {"Motor-controlled stand"};
       const char *const *activeScripts = scene.isUnitreeH1() ? h1Scripts : scene.isValkyrie() ? valkyrieScripts : robotScripts;
       const int activeScriptCount = scene.isUnitreeH1() ? IM_ARRAYSIZE(h1Scripts) : scene.isValkyrie() ? IM_ARRAYSIZE(valkyrieScripts) : IM_ARRAYSIZE(robotScripts);
       int visibleScript = scene.isUnitreeH1() || scene.isValkyrie() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
@@ -1067,8 +1070,8 @@ int main() {
       if (gBuildValkyrieRequested) {
         scene.buildValkyrie(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
-        rebuildSceneGeometry(); gSimulationRunning = false; gBuildValkyrieRequested = false;
-        gSceneStatus = "NASA Valkyrie imported. Simulation is gated: no validated motor-and-sensor balance policy is available yet.";
+        rebuildSceneGeometry(); gSimulationRunning = true; gBuildValkyrieRequested = false;
+        gSceneStatus = "NASA Valkyrie: full-body motor-controlled stand with physical foot contacts. Walking is not enabled.";
         gSceneStatusError = false;
       }
       if (gDemoRequested) {

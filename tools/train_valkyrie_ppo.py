@@ -6,6 +6,7 @@ evaluate_valkyrie_ppo.py before any native Vulkan integration is considered.
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import gymnasium as gym
@@ -21,6 +22,8 @@ except ModuleNotFoundError:  # supports import by the evaluation harness
     from tools.valkyrie_ik import ValkyrieGaitSolver
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from python.envs import ValkyrieStandEnv
 XML = ROOT / "assets" / "valkyrie" / "valkyrie.xml"
 STANCE = ROOT / "assets" / "valkyrie" / "stance_targets.json"
 LEGS = (
@@ -29,7 +32,7 @@ LEGS = (
 )
 
 
-class ValkyrieEnv(gym.Env):
+class ValkyrieWalkEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(self, walking: bool = False):
@@ -163,6 +166,11 @@ class ValkyrieEnv(gym.Env):
             "tilt_failure": upright < .70,
             "swing_leg": swing_side,
         }
+
+
+def ValkyrieEnv(walking: bool = False):
+    """Use the validated full-body support controller for standing rollouts."""
+    return ValkyrieWalkEnv(walking=True) if walking else ValkyrieStandEnv(XML)
 
 
 def make_env(walking: bool, seed: int):

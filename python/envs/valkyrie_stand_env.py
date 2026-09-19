@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from .valkyrie_balance import ValkyrieBalance
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -36,6 +37,7 @@ class ValkyrieStandEnv(gym.Env):
         self.model = mujoco.MjModel.from_xml_path(str(model_path))
         self.data = mujoco.MjData(self.model)
         self.render_mode = render_mode
+        self.balance = ValkyrieBalance(self.model)
 
         self.dt_sim = self.model.opt.timestep
         self.dt_policy = 0.02
@@ -54,15 +56,15 @@ class ValkyrieStandEnv(gym.Env):
 
         # Bent knees avoid the kinematic singularity of a fully straight leg.
         self.q0_legs = np.array(
-            [0.0, 0.0, -0.35, 0.65, -0.30, 0.0] * 2, dtype=np.float64
+            [0.0, 0.0, -0.2, 0.4, -0.2, 0.0] * 2, dtype=np.float64
         )
-        self.kp = np.array([350, 500, 600, 850, 400, 300] * 2, dtype=np.float64)
-        self.kd = np.array([20, 30, 35, 45, 25, 18] * 2, dtype=np.float64)
         self.ctrl_low = self.model.actuator_ctrlrange[self.leg_actuator_indices, 0]
         self.ctrl_high = self.model.actuator_ctrlrange[self.leg_actuator_indices, 1]
 
-        self.target_pelvis_height = 1.125
-        self.action_scale = 0.15
+        self.target_pelvis_height = 1.1526838687581835
+        self.min_height = self.target_pelvis_height - .05
+        self.action_scale = 0.025
+        self.m, self.d = self.model, self.data  # Existing training/evaluation interface.
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(12,), dtype=np.float32)
 
         # pelvis height (1), projected gravity (3), root velocity (6), leg
@@ -80,16 +82,6 @@ class ValkyrieStandEnv(gym.Env):
         if missing:
             raise ValueError(f"MJCF objects not found: {', '.join(missing)}")
         return ids
-
-    def _get_gravity_compensation(self) -> np.ndarray:
-        """Return gravity bias for leg DoFs without perturbing simulation state."""
-        qvel_backup = self.data.qvel.copy()
-        self.data.qvel[:] = 0.0
-        mujoco.mj_forward(self.model, self.data)
-        tau_gravity = self.data.qfrc_bias[self.leg_dof_indices].copy()
-        self.data.qvel[:] = qvel_backup
-        mujoco.mj_forward(self.model, self.data)
-        return tau_gravity
 
     def _get_contact_forces(self) -> tuple[float, float]:
         """Return normal contact-force magnitudes for the two feet."""
@@ -117,7 +109,7 @@ class ValkyrieStandEnv(gym.Env):
         projected_gravity = rotation.T @ np.array([0.0, 0.0, -1.0])
         root_velocity = self.data.qvel[self.root_dofadr : self.root_dofadr + 6]
         root_velocity_body = rotation.T @ root_velocity[:3]
-        root_angular_velocity_body = rotation.T @ root_velocity[3:]
+        root_angular_velocity_body = root_velocity[3:]  # Free-joint angular velocity is already local.
         left_force, right_force = self._get_contact_forces()
         force_scale = max(self.total_weight, 1.0)
         return np.concatenate((
@@ -135,9 +127,12 @@ class ValkyrieStandEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         root_pos, root_quat = self._root_pose()
-        root_pos[:] = (0.0, 0.0, self.target_pelvis_height)
+        root_pos[:] = (0.0, 0.0, 1.18)
         root_quat[:] = (1.0, 0.0, 0.0, 0.0)
-        self.data.qpos[self.leg_qpos_indices] = self.q0_legs + self.np_random.uniform(-0.02, 0.02, 12)
+        self.balance.reset(self.data)
+        self.target_pelvis_height = float(root_pos[2])
+        self.min_height = self.target_pelvis_height - .05
+        self.data.qpos[self.leg_qpos_indices] += self.np_random.uniform(-0.002, 0.002, 12)
         self.data.qvel[:] = 0.0
         self.data.ctrl[:] = 0.0
         self.prev_action.fill(0.0)
@@ -149,16 +144,12 @@ class ValkyrieStandEnv(gym.Env):
         if action_clipped.shape != self.action_space.shape:
             raise ValueError(f"Expected action shape {self.action_space.shape}, got {action_clipped.shape}")
         previous_action = self.prev_action.copy()
-        target = self.q0_legs + action_clipped * self.action_scale
+        target = self.balance.home.copy()
+        target[self.leg_actuator_indices] += action_clipped * self.action_scale
         for _ in range(self.n_substeps):
-            torque = (
-                self.kp * (target - self.data.qpos[self.leg_qpos_indices])
-                - self.kd * self.data.qvel[self.leg_dof_indices]
-                + self._get_gravity_compensation()
-            )
-            self.data.ctrl[self.leg_actuator_indices] = np.clip(torque, self.ctrl_low, self.ctrl_high)
-            self.data.qfrc_applied[:] = 0.0
+            self.balance.control(self.data, target)
             mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
 
         root_pos, pelvis_quat = self._root_pose()
         upright = float(1.0 - 2.0 * (pelvis_quat[1] ** 2 + pelvis_quat[2] ** 2))
@@ -166,17 +157,20 @@ class ValkyrieStandEnv(gym.Env):
         torques = self.data.ctrl[self.leg_actuator_indices]
         height_reward = np.exp(-25.0 * (root_pos[2] - self.target_pelvis_height) ** 2)
         support_reward = 1.0 if left_force > 100.0 and right_force > 100.0 else 0.2
-        torque_penalty = 1e-4 * np.square(torques).sum()
+        torque_penalty = 0.01 * np.square(torques / np.maximum(np.abs(self.ctrl_low), self.ctrl_high)).mean()
         action_rate_penalty = 0.05 * np.square(action_clipped - previous_action).sum()
         reward = 0.45 * height_reward + 0.35 * max(upright, 0.0) + 0.20 * support_reward
         reward -= torque_penalty + action_rate_penalty
         self.prev_action = action_clipped.copy()
 
-        terminated = bool(root_pos[2] < 0.98 or upright < 0.72 or not np.isfinite(self.data.qpos).all())
+        terminated = bool(root_pos[2] < self.min_height or upright < 0.98 or not np.isfinite(self.data.qpos).all())
         return self._get_obs(), float(reward), terminated, False, {
             "pelvis_height": float(root_pos[2]),
             "upright": upright,
             "left_foot_force": left_force,
             "right_foot_force": right_force,
             "knee_pitch_torque": float(torques[3]),
+            "double_support": bool(left_force > 100 and right_force > 100),
+            "height_failure": bool(root_pos[2] < self.min_height),
+            "tilt_failure": bool(upright < .98),
         }

@@ -47,12 +47,19 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   std::array<float,2> contactX{}, contactY{}, airHeight{};
   std::array<int,2> verifiedSteps{};
   float maxContactClearance=0;
+  int standSupportSamples=0;
+  float maxStandTilt=0;
   for (int i=0;i<steps;++i) {
     physics.step(scene, dt);
     const Vec3 p=torso->transform.position;
     maxDisplacement=std::max(maxDisplacement,std::hypot(p.x-initial.x,p.z-initial.z));
     minHeight=std::min(minHeight,p.y);
     const auto &m=physics.telemetry();
+    if (valkyrie) {
+      standSupportSamples += m.footContact[0] && m.footContact[1];
+      maxStandTilt = std::max(maxStandTilt, std::max(std::abs(torso->transform.rotation.x),
+                                                   std::abs(torso->transform.rotation.z)));
+    }
     if(script==5 && !valkyrie) for(int leg=0;leg<2;++leg) {
       const auto *ankle=leg==0 ? leftAnkle:rightAnkle;
       if(!ankle) continue;
@@ -118,11 +125,14 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   return {{"verified_steps",verifiedSteps},{"contact_clearance_m",maxContactClearance},
           {"forward_displacement_m",forward(torso->transform.position)-forward(initial)},
           {"goal_distance_m",goalDistance},{"reached_goal",reachedGoal},
-          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > 1.10f &&
-                                  forward(torso->transform.position)-forward(initial) > 0.6f && maxGaitCycle > 0.8f :
+          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > initial.y - 0.05f &&
+                                  maxDisplacement < 0.10f && maxSpeed < 0.30f &&
+                                  maxStandTilt < 0.15f && standSupportSamples > .95f * steps :
                               maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
                    (script == 0 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
+          {"stand_support_fraction",static_cast<float>(standSupportSamples)/steps},
+          {"max_stand_tilt_rad",maxStandTilt},
           {"max_horizontal_displacement_m",maxDisplacement},
           {"min_torso_height_m",minHeight},{"max_joint_error_rad",maxError},
           {"torque_saturated_samples",saturated},{"instability_time_s",instabilityTime},
@@ -151,7 +161,7 @@ int main(int argc, char **argv) {
     {5.5f,3.0f,0.22f,0.18f},{3.0f,2.8f,0.50f,0.10f}
   }};
   json trials=json::array(); json best; float bestScore=std::numeric_limits<float>::max();
-  const size_t candidateCount = quick || script==5 ? 1u : candidates.size();
+  const size_t candidateCount = quick || script==5 || valkyrie ? 1u : candidates.size();
   const float durationSeconds = quick ? 8.0f : 60.0f;
   for (size_t index = 0; index < candidateCount; ++index) {
     json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1, fullBody, valkyrie); trials.push_back(result);

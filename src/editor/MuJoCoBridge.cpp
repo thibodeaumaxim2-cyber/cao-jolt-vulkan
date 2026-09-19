@@ -1,4 +1,5 @@
 #include "MuJoCoBridge.hpp"
+#include "ValkyrieBalance.hpp"
 #include "NavigationMacroPolicy.hpp"
 #include "FullBodyGoalPolicy.hpp"
 #include "UnitreePolicy.hpp"
@@ -192,6 +193,8 @@ struct MuJoCoBridge::Impl {
   bool biped = false;
   bool unitreeH1 = false;
   bool valkyrie = false;
+  ValkyrieBalance valkyrieBalance;
+  double valkyrieAccumulator = 0;
   int h1LearningProfile = 0;
   int h1LearningSamples = 0;
   float h1LearningStartTime = 0.0f;
@@ -292,6 +295,10 @@ void MuJoCoBridge::rebuild(Scene &scene) {
     for (int geom = 0; geom < impl_->model->ngeom; ++geom)
       if (impl_->model->geom_group[geom] == 3) impl_->model->geom_friction[3 * geom] = 2.2;
   }
+  if (impl_->valkyrie) {
+    impl_->valkyrieBalance.reset(impl_->model, impl_->data);
+    impl_->valkyrieAccumulator = 0;
+  }
   mj_forward(impl_->model, impl_->data);
   if (impl_->unitreeH1 || impl_->valkyrie) {
     // Initialize proxy transforms immediately so a paused import appears as a
@@ -371,60 +378,23 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     // force to the floating base.
     auto *m = impl_->model; auto *d = impl_->data;
     impl_->scriptTime += seconds;
-    constexpr double standDuration = 2.0;
-    // There are no trained Valkyrie locomotion weights in this checkout.
-    // Keep the player in a motor-only double-support stand until a dedicated
-    // policy passes the same grounded regression expected of H1.
-    const bool walking = false;
-    const double walkTime = std::max(0.0, static_cast<double>(impl_->scriptTime) - standDuration);
-    const double phase = 2.0 * M_PI * std::fmod(walkTime / 1.6, 1.0);
-    const auto footInContact = [&](const char *bodyName) {
-      const int foot = mj_name2id(m, mjOBJ_BODY, bodyName);
-      for (int i = 0; i < d->ncon; ++i) {
-        const auto &contact = d->contact[i];
-        const int first = m->geom_bodyid[contact.geom[0]];
-        const int second = m->geom_bodyid[contact.geom[1]];
-        if ((first == foot && second == 0) || (second == foot && first == 0)) return true;
+    impl_->valkyrieAccumulator += seconds;
+    while (impl_->valkyrieAccumulator + 1e-12 >= m->opt.timestep) {
+      impl_->valkyrieBalance.control(m, d);
+      mj_step(m, d);
+      impl_->valkyrieAccumulator -= m->opt.timestep;
+    }
+    mj_forward(m, d);
+    const auto footInContact = [&](const char* name) {
+      const int foot = mj_name2id(m, mjOBJ_BODY, name);
+      for (int i=0; i<d->ncon; ++i) {
+        const int a=m->geom_bodyid[d->contact[i].geom[0]];
+        const int b=m->geom_bodyid[d->contact[i].geom[1]];
+        if ((a==foot && b==0) || (b==foot && a==0)) return true;
       }
       return false;
     };
-    const bool leftContact = footInContact("leftFoot");
-    const bool rightContact = footInContact("rightFoot");
-    for (int actuator = 0; actuator < m->nu; ++actuator) {
-      const int joint = m->actuator_trnid[2 * actuator];
-      if (joint < 0) continue;
-      const char *name = mj_id2name(m, mjOBJ_ACTUATOR, actuator);
-      const int qpos = m->jnt_qposadr[joint], dof = m->jnt_dofadr[joint];
-      float kp = 2.0f, kd = 0.5f;
-      const std::string n = name ? name : "";
-      if (n.find("Hip") != std::string::npos || n.find("Knee") != std::string::npos) kp=120.0f, kd=12.0f;
-      else if (n.find("Ankle") != std::string::npos) kp=70.0f, kd=8.0f;
-      else if (n.find("torso") != std::string::npos) kp=80.0f, kd=8.0f;
-      else if (n.find("Shoulder") != std::string::npos) kp=15.0f, kd=2.0f;
-      else if (n.find("Elbow") != std::string::npos) kp=10.0f, kd=1.0f;
-      // The imported zero pose is Valkyrie's verified double-support posture.
-      // Hold it before a contact-aware gait is allowed to perturb one leg.
-      float target = 0.0f;
-      if (walking) {
-        const bool right = n.rfind("right", 0) == 0;
-        const double legPhase = phase + (right ? 0.0 : M_PI);
-        const float swing = std::max(0.0f, static_cast<float>(std::sin(legPhase)));
-        const bool supportContact = right ? rightContact : leftContact;
-        if (n.find("HipPitch") != std::string::npos) target += 0.12f * std::sin(legPhase);
-        else if (n.find("KneePitch") != std::string::npos) target += 0.18f * swing;
-        else if (n.find("AnklePitch") != std::string::npos) target -= 0.10f * std::sin(legPhase);
-        // Do not pull an unloaded support leg backward through the floor.
-        if (!supportContact && swing < 0.05f && n.find("HipPitch") != std::string::npos) target = 0.0f;
-      }
-      target = std::clamp(target, static_cast<float>(m->jnt_range[2*joint]+0.02),
-                                      static_cast<float>(m->jnt_range[2*joint+1]-0.02));
-      const float torque = kp * (target - static_cast<float>(d->qpos[qpos])) - kd * static_cast<float>(d->qvel[dof]);
-      d->ctrl[actuator] = m->actuator_ctrllimited[actuator]
-          ? std::clamp(static_cast<mjtNum>(torque), m->actuator_ctrlrange[2*actuator], m->actuator_ctrlrange[2*actuator+1])
-          : torque;
-    }
-    std::fill(d->qfrc_applied, d->qfrc_applied + m->nv, 0.0);
-    mj_step(m, d);
+    const bool leftContact=footInContact("leftFoot"), rightContact=footInContact("rightFoot");
     // Publish the articulated body poses immediately. Valkyrie's controller
     // has its own branch above the legacy robot controller, so relying on the
     // latter branch's scene synchronization left every Vulkan proxy frozen at
@@ -447,10 +417,10 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
           std::atan2(mapped(1, 0), mapped(0, 0))};
     }
     impl_->telemetry.motionScript = impl_->script;
-    impl_->telemetry.gaitCycle = walking ? static_cast<float>(std::fmod(walkTime / 1.6, 1.0)) : 0.0f;
+    impl_->telemetry.gaitCycle = 0.0f;
     impl_->telemetry.torsoSpeedMps = std::hypot(static_cast<float>(d->qvel[0]), static_cast<float>(d->qvel[1]));
     impl_->telemetry.footContact = {{leftContact, rightContact}};
-    impl_->telemetry.walkingAllowed = walking && leftContact && rightContact;
+    impl_->telemetry.walkingAllowed = false;
   } else {
   if (impl_->unitreeH1 && (impl_->script == 5) != impl_->officialPolicy) rebuild(scene);
   if (impl_->unitreeH1 && impl_->officialPolicy) {
