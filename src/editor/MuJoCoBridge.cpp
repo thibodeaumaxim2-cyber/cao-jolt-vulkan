@@ -366,13 +366,30 @@ void MuJoCoBridge::rebuild(Scene &scene) {
 void MuJoCoBridge::step(Scene &scene, float seconds) {
   if (!impl_->ready || !impl_->model || !impl_->data || seconds <= 0.0f) return;
   if (impl_->valkyrie) {
-    // Assisted Valkyrie simulation: torque-limited joint posture control plus
-    // a bounded horizontal/attitude safety gantry. Vertical support remains
-    // exclusively the physical feet, so this is useful for controller
-    // calibration without claiming free-standing balance.
+    // Valkyrie uses only motor torques and MuJoCo contact feedback. Unlike
+    // the earlier preview, this path never writes qpos/qvel or applies a
+    // force to the floating base.
     auto *m = impl_->model; auto *d = impl_->data;
     impl_->scriptTime += seconds;
-    const double phase = 2.0 * M_PI * std::fmod(impl_->scriptTime / 1.6, 1.0);
+    constexpr double standDuration = 2.0;
+    // There are no trained Valkyrie locomotion weights in this checkout.
+    // Keep the player in a motor-only double-support stand until a dedicated
+    // policy passes the same grounded regression expected of H1.
+    const bool walking = false;
+    const double walkTime = std::max(0.0, static_cast<double>(impl_->scriptTime) - standDuration);
+    const double phase = 2.0 * M_PI * std::fmod(walkTime / 1.6, 1.0);
+    const auto footInContact = [&](const char *bodyName) {
+      const int foot = mj_name2id(m, mjOBJ_BODY, bodyName);
+      for (int i = 0; i < d->ncon; ++i) {
+        const auto &contact = d->contact[i];
+        const int first = m->geom_bodyid[contact.geom[0]];
+        const int second = m->geom_bodyid[contact.geom[1]];
+        if ((first == foot && second == 0) || (second == foot && first == 0)) return true;
+      }
+      return false;
+    };
+    const bool leftContact = footInContact("leftFoot");
+    const bool rightContact = footInContact("rightFoot");
     for (int actuator = 0; actuator < m->nu; ++actuator) {
       const int joint = m->actuator_trnid[2 * actuator];
       if (joint < 0) continue;
@@ -385,54 +402,55 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
       else if (n.find("torso") != std::string::npos) kp=80.0f, kd=8.0f;
       else if (n.find("Shoulder") != std::string::npos) kp=15.0f, kd=2.0f;
       else if (n.find("Elbow") != std::string::npos) kp=10.0f, kd=1.0f;
-      float gaitOffset = 0.0f;
-      if (n.find("rightHipPitch") != std::string::npos) gaitOffset = 0.16f * std::sin(phase);
-      else if (n.find("rightKneePitch") != std::string::npos) gaitOffset = 0.24f * std::max(0.0, std::sin(phase));
-      else if (n.find("rightAnklePitch") != std::string::npos) gaitOffset = -0.11f * std::sin(phase);
-      else if (n.find("leftHipPitch") != std::string::npos) gaitOffset = 0.16f * std::sin(phase + M_PI);
-      else if (n.find("leftKneePitch") != std::string::npos) gaitOffset = 0.24f * std::max(0.0, std::sin(phase + M_PI));
-      else if (n.find("leftAnklePitch") != std::string::npos) gaitOffset = -0.11f * std::sin(phase + M_PI);
-      const float target = std::clamp(gaitOffset, static_cast<float>(m->jnt_range[2*joint]+0.02),
+      // The imported zero pose is Valkyrie's verified double-support posture.
+      // Hold it before a contact-aware gait is allowed to perturb one leg.
+      float target = 0.0f;
+      if (walking) {
+        const bool right = n.rfind("right", 0) == 0;
+        const double legPhase = phase + (right ? 0.0 : M_PI);
+        const float swing = std::max(0.0f, static_cast<float>(std::sin(legPhase)));
+        const bool supportContact = right ? rightContact : leftContact;
+        if (n.find("HipPitch") != std::string::npos) target += 0.12f * std::sin(legPhase);
+        else if (n.find("KneePitch") != std::string::npos) target += 0.18f * swing;
+        else if (n.find("AnklePitch") != std::string::npos) target -= 0.10f * std::sin(legPhase);
+        // Do not pull an unloaded support leg backward through the floor.
+        if (!supportContact && swing < 0.05f && n.find("HipPitch") != std::string::npos) target = 0.0f;
+      }
+      target = std::clamp(target, static_cast<float>(m->jnt_range[2*joint]+0.02),
                                       static_cast<float>(m->jnt_range[2*joint+1]-0.02));
       const float torque = kp * (target - static_cast<float>(d->qpos[qpos])) - kd * static_cast<float>(d->qvel[dof]);
       d->ctrl[actuator] = m->actuator_ctrllimited[actuator]
           ? std::clamp(static_cast<mjtNum>(torque), m->actuator_ctrlrange[2*actuator], m->actuator_ctrlrange[2*actuator+1])
           : torque;
     }
-    const double walkAnchor = 0.18 * impl_->scriptTime;
-    d->qfrc_applied[0] = std::clamp(-5000.0 * (d->qpos[0] - walkAnchor) - 2.0 * std::sqrt(5000.0 * m->body_subtreemass[1]) * d->qvel[0], -5000.0, 5000.0);
-    d->qfrc_applied[1] = std::clamp(-5000.0 * d->qpos[1] - 2.0 * std::sqrt(5000.0 * m->body_subtreemass[1]) * d->qvel[1], -5000.0, 5000.0);
-    const double roll = std::atan2(2.0*(d->qpos[3]*d->qpos[4]+d->qpos[5]*d->qpos[6]), 1.0-2.0*(d->qpos[4]*d->qpos[4]+d->qpos[5]*d->qpos[5]));
-    const double pitch = std::atan2(2.0*(d->qpos[3]*d->qpos[5]-d->qpos[6]*d->qpos[4]), 1.0-2.0*(d->qpos[5]*d->qpos[5]+d->qpos[6]*d->qpos[6]));
-    d->qfrc_applied[3] = std::clamp(-2000.0*roll-150.0*d->qvel[3], -5000.0, 5000.0);
-    d->qfrc_applied[4] = std::clamp(-2000.0*pitch-150.0*d->qvel[4], -5000.0, 5000.0);
-    d->qfrc_applied[5] = -100.0*d->qvel[5];
+    std::fill(d->qfrc_applied, d->qfrc_applied + m->nv, 0.0);
     mj_step(m, d);
-    // The current assisted mode is a calibration conveyor: contacts and the
-    // gantry stabilize the posture while this bounded base command provides
-    // visible forward travel. Free walking must replace this with a contact-
-    // aware whole-body balance policy before it is called autonomous.
-    d->qpos[0] += 0.18 * seconds;
-    d->qvel[0] = 0.18;
-    // Make the calibration gait visually deterministic. The torque controller
-    // remains active for contacts, but the assisted preview also writes the
-    // planned joint pose so a heavily constrained foot cannot hide the gait.
-    for (int actuator = 0; actuator < m->nu; ++actuator) {
-      const int joint = m->actuator_trnid[2 * actuator];
-      const char *name = mj_id2name(m, mjOBJ_ACTUATOR, actuator);
-      if (joint < 0 || !name) continue;
-      const std::string n = name;
-      const bool right = n.find("right") != std::string::npos;
-      const double legPhase = phase + (right ? 0.0 : M_PI);
-      double pose = 0.0;
-      if (n.find("HipPitch") != std::string::npos) pose = 0.28 * std::sin(legPhase);
-      else if (n.find("KneePitch") != std::string::npos) pose = 0.42 * std::max(0.0, std::sin(legPhase));
-      else if (n.find("AnklePitch") != std::string::npos) pose = -0.20 * std::sin(legPhase);
-      else if (n.find("AnkleRoll") != std::string::npos) pose = 0.04 * std::sin(legPhase);
-      if (m->jnt_limited[joint]) pose = std::clamp(pose, m->jnt_range[2 * joint] + 0.02, m->jnt_range[2 * joint + 1] - 0.02);
-      d->qpos[m->jnt_qposadr[joint]] = pose;
+    // Publish the articulated body poses immediately. Valkyrie's controller
+    // has its own branch above the legacy robot controller, so relying on the
+    // latter branch's scene synchronization left every Vulkan proxy frozen at
+    // the import pose while MuJoCo continued stepping invisibly.
+    constexpr std::array<int, 3> axisMap{{0, 2, 1}};
+    for (SceneObject &object : scene.objects()) {
+      const int body = mj_name2id(m, mjOBJ_BODY, object.name.c_str());
+      if (body < 0) continue;
+      const mjtNum *position = d->xpos + 3 * body;
+      const mjtNum *rotation = d->xmat + 9 * body;
+      const auto mapped = [&](int row, int column) {
+        return static_cast<float>(rotation[3 * axisMap[row] + axisMap[column]]);
+      };
+      object.transform.position = {static_cast<float>(position[0]),
+                                   static_cast<float>(position[2]),
+                                   static_cast<float>(position[1])};
+      object.transform.rotation = {
+          std::atan2(mapped(2, 1), mapped(2, 2)),
+          std::asin(clampUnit(-mapped(2, 0))),
+          std::atan2(mapped(1, 0), mapped(0, 0))};
     }
-    mj_forward(m, d);
+    impl_->telemetry.motionScript = impl_->script;
+    impl_->telemetry.gaitCycle = walking ? static_cast<float>(std::fmod(walkTime / 1.6, 1.0)) : 0.0f;
+    impl_->telemetry.torsoSpeedMps = std::hypot(static_cast<float>(d->qvel[0]), static_cast<float>(d->qvel[1]));
+    impl_->telemetry.footContact = {{leftContact, rightContact}};
+    impl_->telemetry.walkingAllowed = walking && leftContact && rightContact;
   } else {
   if (impl_->unitreeH1 && (impl_->script == 5) != impl_->officialPolicy) rebuild(scene);
   if (impl_->unitreeH1 && impl_->officialPolicy) {

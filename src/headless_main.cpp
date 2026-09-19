@@ -118,7 +118,9 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   return {{"verified_steps",verifiedSteps},{"contact_clearance_m",maxContactClearance},
           {"forward_displacement_m",forward(torso->transform.position)-forward(initial)},
           {"goal_distance_m",goalDistance},{"reached_goal",reachedGoal},
-          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > -0.5f : maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
+          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > 1.10f &&
+                                  forward(torso->transform.position)-forward(initial) > 0.6f && maxGaitCycle > 0.8f :
+                              maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
                    (script == 0 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"max_horizontal_displacement_m",maxDisplacement},

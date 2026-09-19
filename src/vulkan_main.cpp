@@ -1067,8 +1067,8 @@ int main() {
       if (gBuildValkyrieRequested) {
         scene.buildValkyrie(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
-        rebuildSceneGeometry(); gSimulationRunning = true; gBuildValkyrieRequested = false;
-        gSceneStatus = "NASA Valkyrie assisted simulation: 58 torque motors, physical feet, bounded balance assist; free balance not validated.";
+        rebuildSceneGeometry(); gSimulationRunning = false; gBuildValkyrieRequested = false;
+        gSceneStatus = "NASA Valkyrie imported. Simulation is gated: no validated motor-and-sensor balance policy is available yet.";
         gSceneStatusError = false;
       }
       if (gDemoRequested) {

@@ -5,6 +5,12 @@ import mujoco
 import numpy as np
 
 
+LEG_JOINTS = {
+    "left": ("leftHipYaw", "leftHipRoll", "leftHipPitch", "leftKneePitch", "leftAnklePitch", "leftAnkleRoll"),
+    "right": ("rightHipYaw", "rightHipRoll", "rightHipPitch", "rightKneePitch", "rightAnklePitch", "rightAnkleRoll"),
+}
+
+
 def solve_site_position(model, data, site_name: str, target, *, iterations=40,
                         damping=1e-2, step_size=0.7, max_delta=0.08,
                         joint_names=()) -> float:
@@ -51,3 +57,58 @@ def solve_standing_feet(model, data, pelvis_height=1.18) -> float:
     for name, target in targets.items():
         error = max(error, solve_site_position(model, data, name, target, joint_names=leg_names))
     return error
+
+
+class ValkyrieGaitSolver:
+    """Alternating-support sole trajectory generator backed by DLS IK.
+
+    It produces bounded motor position targets only.  Dynamic balance and
+    contact switching remain the responsibility of a separate controller.
+    """
+
+    def __init__(self, model, pelvis_height=1.16, cycle_seconds=1.2,
+                 step_length=0.10, swing_height=0.045):
+        self.model = model
+        self.pelvis_height = pelvis_height
+        self.cycle_seconds = cycle_seconds
+        self.step_length = step_length
+        self.swing_height = swing_height
+        self.reference = mujoco.MjData(model)
+        self.reference.qpos[2] = pelvis_height
+        mujoco.mj_forward(model, self.reference)
+        self.sole_sites = {
+            "left": mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "left_sole"),
+            "right": mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "right_sole"),
+        }
+        if min(self.sole_sites.values()) < 0:
+            raise ValueError("Valkyrie sole sites are missing")
+        self.nominal = {side: self.reference.site_xpos[site].copy() for side, site in self.sole_sites.items()}
+        self.actuator_targets = {}
+        for side, names in LEG_JOINTS.items():
+            for name in names:
+                joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+                self.actuator_targets[name] = (joint, model.jnt_qposadr[joint])
+
+    def target(self, time_s):
+        """Return {motor-name: radian target}, swing leg, and sole targets."""
+        phase = (time_s % self.cycle_seconds) / self.cycle_seconds
+        swing_side = "left" if phase < .5 else "right"
+        swing_phase = phase * 2.0 if swing_side == "left" else (phase - .5) * 2.0
+        data = mujoco.MjData(self.model)
+        data.qpos[:] = self.reference.qpos
+        swing_target = self.nominal[swing_side].copy()
+        # Smooth zero-velocity lift and placement. MuJoCo uses Z-up.
+        swing_target[0] += self.step_length * (swing_phase - .5)
+        swing_target[2] += self.swing_height * np.sin(np.pi * swing_phase)
+        solve_site_position(self.model, data, f"{swing_side}_sole", swing_target,
+                            iterations=56, damping=2e-2, step_size=.55, max_delta=.05,
+                            joint_names=LEG_JOINTS[swing_side])
+        mujoco.mj_forward(self.model, data)
+        targets = {}
+        for name, (joint, qpos) in self.actuator_targets.items():
+            value = data.qpos[qpos]
+            if self.model.jnt_limited[joint]:
+                value = np.clip(value, self.model.jnt_range[joint, 0] + .01, self.model.jnt_range[joint, 1] - .01)
+            targets[name] = float(value)
+        soles = {side: data.site_xpos[site].copy() for side, site in self.sole_sites.items()}
+        return targets, swing_side, soles

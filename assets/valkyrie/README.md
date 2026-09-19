@@ -36,3 +36,34 @@ The generated model now exposes pelvis orientation, angular velocity, linear
 acceleration, and left/right sole contact sensors. Use
 `tools/simulate_valkyrie.py --mode free` to measure the unassisted baseline;
 it is expected to report a fall until the contact-aware balance policy passes.
+
+## Grounded policy workflow
+
+`tools/train_valkyrie_ppo.py` trains a separate PPO candidate using only the
+12 leg motors, pelvis IMU state, joint feedback, and the two sole contacts.
+It clears every externally applied base force before each physics step. Start
+with a standing policy, then a walking policy:
+
+```bash
+.venv/bin/python tools/optimize_valkyrie_stance.py --iterations 160
+.venv/bin/python tools/train_valkyrie_ppo.py --workers 8 --steps 1000000 --output artifacts/valkyrie_stand_ppo
+.venv/bin/python tools/evaluate_valkyrie_ppo.py --model artifacts/valkyrie_stand_ppo.zip
+.venv/bin/python tools/train_valkyrie_ppo.py --walking --workers 8 --steps 3000000 --init-model artifacts/valkyrie_stand_ppo.zip --output artifacts/valkyrie_walk_ppo
+.venv/bin/python tools/evaluate_valkyrie_ppo.py --walking --model artifacts/valkyrie_walk_ppo.zip
+```
+
+Only a checkpoint that passes the grounded evaluation (no falls and measurable
+forward progress) may be considered for Vulkan integration.
+
+## IK gait targets
+
+`tools/valkyrie_ik.py` contains a DLS IK solver and `ValkyrieGaitSolver`,
+which generates alternating left/right sole trajectories and bounded targets
+for the 12 leg motors. Verify its kinematic contract with:
+
+```bash
+.venv/bin/python tools/test_valkyrie_gait_solver.py
+```
+
+These are motor targets, not a balance policy; runtime integration remains
+gated on a grounded contact/balance regression.
