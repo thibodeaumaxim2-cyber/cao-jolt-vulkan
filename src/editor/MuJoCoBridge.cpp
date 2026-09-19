@@ -1,5 +1,6 @@
 #include "MuJoCoBridge.hpp"
 #include "ValkyrieBalance.hpp"
+#include "ValkyrieWalk.hpp"
 #include "NavigationMacroPolicy.hpp"
 #include "FullBodyGoalPolicy.hpp"
 #include "UnitreePolicy.hpp"
@@ -194,6 +195,7 @@ struct MuJoCoBridge::Impl {
   bool unitreeH1 = false;
   bool valkyrie = false;
   ValkyrieBalance valkyrieBalance;
+  ValkyrieWalk valkyrieWalk;
   double valkyrieAccumulator = 0;
   int h1LearningProfile = 0;
   int h1LearningSamples = 0;
@@ -298,6 +300,7 @@ void MuJoCoBridge::rebuild(Scene &scene) {
   if (impl_->valkyrie) {
     impl_->valkyrieBalance.reset(impl_->model, impl_->data);
     impl_->valkyrieAccumulator = 0;
+    impl_->valkyrieWalk.initialized = false;
   }
   mj_forward(impl_->model, impl_->data);
   if (impl_->unitreeH1 || impl_->valkyrie) {
@@ -380,7 +383,11 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
     impl_->scriptTime += seconds;
     impl_->valkyrieAccumulator += seconds;
     while (impl_->valkyrieAccumulator + 1e-12 >= m->opt.timestep) {
-      impl_->valkyrieBalance.control(m, d);
+      if (impl_->script == 1 && !impl_->valkyrieWalk.initialized)
+        impl_->valkyrieWalk.reset(m, d, impl_->valkyrieBalance.targets());
+      if (impl_->valkyrieWalk.initialized)
+        impl_->valkyrieWalk.control(m, d, impl_->script == 1);
+      else impl_->valkyrieBalance.control(m, d);
       mj_step(m, d);
       impl_->valkyrieAccumulator -= m->opt.timestep;
     }
@@ -417,10 +424,11 @@ void MuJoCoBridge::step(Scene &scene, float seconds) {
           std::atan2(mapped(1, 0), mapped(0, 0))};
     }
     impl_->telemetry.motionScript = impl_->script;
-    impl_->telemetry.gaitCycle = 0.0f;
+    impl_->telemetry.gaitCycle = impl_->valkyrieWalk.initialized ? impl_->valkyrieWalk.cycle() : 0;
+    impl_->telemetry.activeSwingLeg = impl_->valkyrieWalk.initialized ? impl_->valkyrieWalk.activeSwing : -1;
     impl_->telemetry.torsoSpeedMps = std::hypot(static_cast<float>(d->qvel[0]), static_cast<float>(d->qvel[1]));
     impl_->telemetry.footContact = {{leftContact, rightContact}};
-    impl_->telemetry.walkingAllowed = false;
+    impl_->telemetry.walkingAllowed = impl_->script == 1;
   } else {
   if (impl_->unitreeH1 && (impl_->script == 5) != impl_->officialPolicy) rebuild(scene);
   if (impl_->unitreeH1 && impl_->officialPolicy) {

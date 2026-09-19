@@ -12,7 +12,7 @@
 using json = nlohmann::json;
 
 static json runTrial(const StandingTuning &tuning, int script, float durationSeconds, bool biped = false,
-                     bool unitreeH1 = false, bool fullBody = false, bool valkyrie = false) {
+                     bool unitreeH1 = false, bool fullBody = false, bool valkyrie = false, bool stopWalk = false) {
   Scene scene;
   if (valkyrie) scene.buildValkyrie();
   else if (unitreeH1) scene.buildUnitreeH1(); else if (biped) scene.buildBiped(); else scene.buildQuadruped();
@@ -27,8 +27,8 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   const std::string rootName = unitreeH1 || valkyrie ? "pelvis" : "Torso";
   for (auto &o : scene.objects()) {
     if (o.name == rootName) torso = &o;
-    if (o.name == "left_ankle_link") leftAnkle = &o;
-    if (o.name == "right_ankle_link") rightAnkle = &o;
+    if (o.name == (valkyrie ? "leftFoot" : "left_ankle_link")) leftAnkle = &o;
+    if (o.name == (valkyrie ? "rightFoot" : "right_ankle_link")) rightAnkle = &o;
   }
   if (!torso) return {{"stable", false}, {"score", 1e9}};
   const Vec3 initial = torso->transform.position;
@@ -49,18 +49,23 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   float maxContactClearance=0;
   int standSupportSamples=0;
   float maxStandTilt=0;
+  Vec3 stoppedPosition{};
+  float stopDrift=0;
   for (int i=0;i<steps;++i) {
+    if(stopWalk && i==7200) physics.setRobotScript(0);
     physics.step(scene, dt);
     const Vec3 p=torso->transform.position;
     maxDisplacement=std::max(maxDisplacement,std::hypot(p.x-initial.x,p.z-initial.z));
     minHeight=std::min(minHeight,p.y);
     const auto &m=physics.telemetry();
+    if(stopWalk && i==12000) stoppedPosition=p;
+    if(stopWalk && i>12000) stopDrift=std::max(stopDrift,std::hypot(p.x-stoppedPosition.x,p.z-stoppedPosition.z));
     if (valkyrie) {
       standSupportSamples += m.footContact[0] && m.footContact[1];
       maxStandTilt = std::max(maxStandTilt, std::max(std::abs(torso->transform.rotation.x),
                                                    std::abs(torso->transform.rotation.z)));
     }
-    if(script==5 && !valkyrie) for(int leg=0;leg<2;++leg) {
+    if((script==5 && !valkyrie) || (valkyrie && script==1)) for(int leg=0;leg<2;++leg) {
       const auto *ankle=leg==0 ? leftAnkle:rightAnkle;
       if(!ankle) continue;
       const auto &pfoot=ankle->transform.position;
@@ -125,14 +130,17 @@ static json runTrial(const StandingTuning &tuning, int script, float durationSec
   return {{"verified_steps",verifiedSteps},{"contact_clearance_m",maxContactClearance},
           {"forward_displacement_m",forward(torso->transform.position)-forward(initial)},
           {"goal_distance_m",goalDistance},{"reached_goal",reachedGoal},
-          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > initial.y - 0.05f &&
-                                  maxDisplacement < 0.10f && maxSpeed < 0.30f &&
-                                  maxStandTilt < 0.15f && standSupportSamples > .95f * steps :
+          {"stable",valkyrie ? instabilityTime < 0.0f && minHeight > initial.y - 0.10f &&
+                                  maxSpeed < 0.30f && maxStandTilt < 0.15f && (!stopWalk || stopDrift<.005f) &&
+                                  (script==1 ? verifiedSteps[0]>=2 && verifiedSteps[1]>=2 &&
+                                    forward(torso->transform.position)-forward(initial)>.25f :
+                                    minHeight > initial.y-.05f && maxDisplacement<.10f && standSupportSamples>.95f*steps) :
                               maxSpeed<0.75f && maxDisplacement<stableDisplacement && minHeight>0.70f && hasSwingClearance && hasAlternatingSwings && hasThirtyCmPlacement && reachedGoal &&
                    (script == 0 || swingSamples > 0)},
           {"score",score},{"max_torso_speed_mps",maxSpeed},
           {"stand_support_fraction",static_cast<float>(standSupportSamples)/steps},
           {"max_stand_tilt_rad",maxStandTilt},
+          {"stop_drift_m",stopDrift},
           {"max_horizontal_displacement_m",maxDisplacement},
           {"min_torso_height_m",minHeight},{"max_joint_error_rad",maxError},
           {"torque_saturated_samples",saturated},{"instability_time_s",instabilityTime},
@@ -146,11 +154,12 @@ int main(int argc, char **argv) {
   const std::string mode = argc > 1 ? argv[1] : "stand";
   const bool walking = mode == "walk" || mode == "tripod" || mode == "h1walk" || mode == "h1learn" || mode == "h1zmp";
   const bool biped = mode == "biped";
-  const bool valkyrie = mode == "valkyrie";
+  const bool stopWalk = mode == "valkyriewalkstop";
+  const bool valkyrie = mode == "valkyrie" || mode == "valkyriewalk" || stopWalk;
   const bool fullBody = mode == "h1full";
   const bool unitreeH1 = !valkyrie && (mode == "h1" || mode == "h1walk" || mode == "h1learn" || mode == "h1zmp" || mode == "h1contact" || mode == "h1unitree" || fullBody);
   const bool quick = argc > 2 && std::string(argv[2]) == "--quick";
-  const int script = (mode == "h1unitree" || fullBody) ? 5 : mode == "h1contact" ? 4 : mode == "tripod" ? 2 : mode == "h1zmp" ? 3 : mode == "h1learn" ? 2 : (mode == "walk" || mode == "h1walk") ? 1 : 0;
+  const int script = (mode == "h1unitree" || fullBody) ? 5 : mode == "h1contact" ? 4 : mode == "tripod" ? 2 : mode == "h1zmp" ? 3 : mode == "h1learn" ? 2 : (mode == "walk" || mode == "h1walk" || mode == "valkyriewalk" || stopWalk) ? 1 : 0;
   // Ten deterministic controller candidates: damping and balance gains are
   // varied around the current model, then the lowest-scoring trial wins.
   const std::array<StandingTuning,10> candidates{{
@@ -162,9 +171,9 @@ int main(int argc, char **argv) {
   }};
   json trials=json::array(); json best; float bestScore=std::numeric_limits<float>::max();
   const size_t candidateCount = quick || script==5 || valkyrie ? 1u : candidates.size();
-  const float durationSeconds = quick ? 8.0f : 60.0f;
+  const float durationSeconds = quick ? (valkyrie && script==1 ? 20.0f : 8.0f) : 60.0f;
   for (size_t index = 0; index < candidateCount; ++index) {
-    json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1, fullBody, valkyrie); trials.push_back(result);
+    json result=runTrial(candidates[index], script, durationSeconds, biped, unitreeH1, fullBody, valkyrie, stopWalk); trials.push_back(result);
     if (result["score"].get<float>()<bestScore) { bestScore=result["score"]; best=result; }
   }
   json output={{"iterations",candidateCount},{"duration_seconds",durationSeconds},

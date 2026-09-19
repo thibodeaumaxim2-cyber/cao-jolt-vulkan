@@ -13,6 +13,7 @@ class ValkyrieBalance {
   std::array<int, 2> feet{};
   int root = 0, base = 0;
 public:
+  const std::vector<mjtNum>& targets() const { return home; }
   void reset(mjModel* m, mjData* d) {
     m->opt.timestep = .001;
     home.assign(m->nu, 0); kp.assign(m->nu, 80); kd.assign(m->nu, 8);

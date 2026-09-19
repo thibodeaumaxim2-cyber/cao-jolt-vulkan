@@ -248,6 +248,12 @@ int main(int argc, char** argv) {
   // Use the normal import path once rendering is initialized.
   for (int i=1; i<argc; ++i)
     if (std::string(argv[i]) == "--valkyrie") gBuildValkyrieRequested = true;
+  bool valkyrieWalkOnImport = false;
+  for (int i=1; i<argc; ++i)
+    if (std::string(argv[i]) == "--valkyrie-walk") {
+      gBuildValkyrieRequested = true;
+      valkyrieWalkOnImport = true;
+    }
   try {
     if (!glfwInit()) return 1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -842,7 +848,7 @@ int main(int argc, char** argv) {
       if (ImGui::Button("Jump test")) gJumpTestRequested = true; ImGui::SameLine();
       if (ImGui::Button("Macro AI: go to circle")) gNavigateGoalRequested = true; ImGui::SameLine();
       if (ImGui::Button(physics.fullBodyMode() ? "Use walking H1" : "Enable full-body H1")) gToggleFullBodyRequested = true; ImGui::SameLine();
-      if (scene.isValkyrie()) { ImGui::TextDisabled("Valkyrie assisted simulation"); ImGui::SameLine(); if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning; }
+      if (scene.isValkyrie()) { ImGui::TextDisabled("Valkyrie motor simulation"); ImGui::SameLine(); if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning; }
       else if (ImGui::Button(gSimulationRunning ? "Pause" : "Play")) gSimulationRunning = !gSimulationRunning;
       ImGui::Separator();
       ImGui::TextDisabled("Window controls");
@@ -856,7 +862,7 @@ int main(int argc, char** argv) {
       if (ImGui::Button("Default 1280 x 800")) { glfwRestoreWindow(window); glfwSetWindowSize(window, 1280, 800); glfwSetWindowPos(window, 80, 80); }
       ImGui::TextDisabled(scene.isUnitreeH1()
           ? "Unitree H1: torque PD | balance-gated assisted stepping"
-          : scene.isValkyrie() ? "NASA Valkyrie: visual preview | free-standing policy gated"
+          : scene.isValkyrie() ? "NASA Valkyrie: motor-driven stand / slow walk"
           : scene.isBiped() ? "Biped: 8 rotary actuators | balance-verified standing pose"
                             : "Hexapod: 24 rotary actuators | one-foot crawl gait");
       if (!gSceneStatus.empty()) {
@@ -867,16 +873,14 @@ int main(int argc, char** argv) {
       }
       const char *robotScripts[] = {"Stand", "Crawl walk", "Tripod walk", "Fast crawl"};
       const char *h1Scripts[] = {"H1 Unitree pretrained walk"};
-      const char *valkyrieScripts[] = {"Motor-controlled stand"};
+      const char *valkyrieScripts[] = {"Motor-controlled stand", "Slow walk"};
       const char *const *activeScripts = scene.isUnitreeH1() ? h1Scripts : scene.isValkyrie() ? valkyrieScripts : robotScripts;
       const int activeScriptCount = scene.isUnitreeH1() ? IM_ARRAYSIZE(h1Scripts) : scene.isValkyrie() ? IM_ARRAYSIZE(valkyrieScripts) : IM_ARRAYSIZE(robotScripts);
-      int visibleScript = scene.isUnitreeH1() || scene.isValkyrie() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
-      if (scene.isValkyrie()) {
-        ImGui::BeginDisabled(); ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount); ImGui::EndDisabled();
-      } else if (ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount)) {
+      int visibleScript = scene.isUnitreeH1() ? 0 : std::clamp(gRobotScript, 0, activeScriptCount - 1);
+      if (ImGui::Combo("Motion script", &visibleScript, activeScripts, activeScriptCount)) {
         gRobotScript = scene.isUnitreeH1() ? 5 : visibleScript;
         physics.setRobotScript(gRobotScript);
-        gSimulationRunning = gRobotScript != 0;
+        gSimulationRunning = scene.isValkyrie() || gRobotScript != 0;
       }
       ImGui::Text("Active script: %s", activeScripts[visibleScript]);
       const RobotTelemetry &robotTelemetry = physics.telemetry();
@@ -1068,10 +1072,12 @@ int main(int argc, char** argv) {
         gSceneStatusError = false;
       }
       if (gBuildValkyrieRequested) {
-        scene.buildValkyrie(); gRobotScript = 0; physics.rebuild(scene); physics.setRobotScript(0);
+        scene.buildValkyrie(); gRobotScript = valkyrieWalkOnImport ? 1 : 0;
+        valkyrieWalkOnImport = false;
+        physics.rebuild(scene); physics.setRobotScript(gRobotScript);
         gSelectedId = scene.objects().empty() ? 0 : scene.objects().front().id;
         rebuildSceneGeometry(); gSimulationRunning = true; gBuildValkyrieRequested = false;
-        gSceneStatus = "NASA Valkyrie: full-body motor-controlled stand with physical foot contacts. Walking is not enabled.";
+        gSceneStatus = "NASA Valkyrie: select Stand or Slow walk. Stand finishes the current step and settles onto both feet.";
         gSceneStatusError = false;
       }
       if (gDemoRequested) {
